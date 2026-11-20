@@ -1,0 +1,158 @@
+# house_watch 公開預設設定（契約 C9）。這個檔會進 git、也會公開。
+#
+# - 只放公開抓取範圍、區域、選項清單與執行參數；不放任何人的個人條件。
+# - 個人條件只存在瀏覽器（localStorage 與分享連結），程式不讀。
+#   兩個設定檔出現條件類的鍵（例如 profiles、price_max_wan、near_m）都會拒絕執行。
+# - 本機運作設定（資料夾、要啟用的區域、發布、來源覆寫）寫在 settings.toml，不進 git。
+
+# ------------------------------------------------------------------ 公開抓取範圍
+# 刻意比任何個人條件寬，讓人無法從公開資料反推預算。
+# 維護規則：只放寬、不收窄。
+
+[scope.listing]
+max_price_wan = 2500      # 開價上限（萬元）
+max_age_years = 25        # 屋齡上限（年）
+min_main_ping = 18        # 主建物下限（坪）
+floors = [2, 15]          # 樓層範圍，含兩端
+btypes = ["大樓", "華廈"]
+
+[scope.tx]
+months = 24               # 成交日在最近幾個月內
+min_main_ping = 15        # 主建物下限（坪）
+btypes = ["大樓", "華廈"]
+
+# ------------------------------------------------------------------ 區域
+# 每個區域：要查詢的行政區、多邊形引用、門檻選項清單、公開抓取範圍。
+# - 選項清單是公開的，只是一張清單；選哪一檔放在瀏覽器的條件裡。
+# - geo 檔放在套件的 geo 資料夾（WP1），feature 一律依屬性挑選，不依順序。
+# - 有效範圍＝外推範圍 ∩ 有查詢的行政區（R1-15、R3-21）。
+# - 本機設定沒有寫 enabled_areas 時，只啟用第一個區域。
+
+[[areas]]
+id = "taoyuan_core"
+name = "中路／藝文特區周邊"
+kind = "buffer"
+districts = [{ name = "桃園區", zip = "330" }]
+scope = { max_near_m = 1000 }
+options = { near_m_options = [0, 300, 500, 1000], rca_m_options = [0, 300, 500, 1000] }
+
+[areas.geo.zhonglu]       # 中路特區：整體開發計畫範圍外框
+file = "zhonglu.geojson"
+role = "near"
+
+[areas.geo.yiwen]         # 藝文特區：以藝文里為準
+file = "yiwen.geojson"
+role = "near"
+match = { name = "藝文里（2026-03-01 新設之里，行政界）" }
+
+[areas.geo.rca]           # RCA 原桃園廠地下水污染管制區（官方範圍）
+file = "rca_restricted_area.geojson"
+role = "avoid"
+
+[[areas]]
+id = "zhongli_ic"
+name = "中壢交流道周邊"
+kind = "drive"
+districts = [{ name = "中壢區", zip = "320" }]
+scope = { max_drive_min = 12 }
+options = { drive_min_options = [6, 8, 10, 12] }
+
+[areas.geo.district]      # 中壢區界
+file = "zhongli_district.geojson"
+role = "district"
+
+[areas.geo.drive]         # 內壢／中豐／中壢三個交流道的聯集車程範圍（一般路況）
+file = "zhongli_ic_drive.geojson"
+role = "drive"
+match = { kind = "union" }
+band_property = "minutes"
+
+[areas.geo.ic]            # 上匝道入口點，只用來畫在地圖上
+file = "zhongli_ic_points.geojson"
+role = "marker"
+
+# ------------------------------------------------------------------ 來源
+# max_requests_full、probe_pages、detail_cap 目前是佔位值：
+# 每日請求預算還在等擁有者決定（PLAN_v2 §4 第 1 項）。決定之前，
+# 大站的完整掃描可能因為碰到上限而判為無效（budget_exhausted）。
+# min_interval_s 是同一網站兩次請求的最小間隔（秒），不能小於 3。
+
+[sources.cthouse]         # 中信房屋
+enabled = true
+publish = true
+min_interval_s = 4
+max_requests_full = 60
+probe_pages = 2
+detail_cap = 10
+
+[sources.hbhousing]       # 住商不動產
+enabled = true
+publish = true
+min_interval_s = 4
+max_requests_full = 60
+probe_pages = 2
+detail_cap = 10
+
+[sources.rakuya]          # 樂屋網
+enabled = true
+publish = true
+min_interval_s = 4
+max_requests_full = 60
+probe_pages = 2
+detail_cap = 10
+
+[sources.etwarm]          # 東森房屋
+enabled = true
+publish = true
+min_interval_s = 4
+max_requests_full = 60
+probe_pages = 2
+detail_cap = 10
+
+[sources.century21]       # 21 世紀不動產
+enabled = true
+publish = true
+min_interval_s = 4
+max_requests_full = 60
+probe_pages = 2
+detail_cap = 10
+
+# ------------------------------------------------------------------ 排程
+# 只裝一個排程入口（house-watch tick），在時段內每小時觸發一次；
+# 每天做一次完整掃描，其餘每隔 probe_every_hours 小時探測一次。
+
+[schedule]
+timezone = "Asia/Taipei"
+window_hours = [8, 23]    # 台北時間的整點，含兩端
+probe_every_hours = 3
+lvr_every_hours = 24      # 實價登錄每天檢查一次
+doorindex_every_days = 7  # 門牌詮釋資料每週檢查一次
+run_deadline_minutes = 50 # 一次執行的截止時間
+backup_keep = 7           # 每日備份保留份數
+
+# ------------------------------------------------------------------ 過期門檻（小時）
+# 過期與否在瀏覽器用「時間戳 vs 現在」判斷（R1-17、R2-15）。
+
+[freshness_hours]
+cthouse = 12
+hbhousing = 12
+rakuya = 12
+etwarm = 12
+century21 = 12
+lvr = 36
+doorindex = 1080          # 45 天
+
+# ------------------------------------------------------------------ HTTP
+
+[http]
+connect_timeout_s = 10
+read_timeout_s = 30
+page_max_bytes = 5_242_880          # 5 MiB：列表頁與詳細頁
+download_max_bytes = 268_435_456    # 256 MiB：門牌全市 CSV 約 95 MB、實價登錄 zip 約 15 MB
+# user_agent：待擁有者決定（PLAN_v2 §4 第 2 項），決定之前不設定。
+
+[tls]
+relax_strict_hosts = []   # 只清掉 X509 strict 旗標的主機；憑證驗證本身不能關
+
+[robots.accepted_hash]
+# <來源> = "<robots.txt 內容的 sha256>"；內容一變就停用該站，等人確認。

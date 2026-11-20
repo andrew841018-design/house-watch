@@ -1,0 +1,12 @@
+# 文字檔一律用 LF（R3-19），在 Windows 上 clone 也一樣。
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.zip binary
+*.sqlite binary
+
+uv.lock linguist-generated=true
+schemas/export.schema.json linguist-generated=true

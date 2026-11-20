@@ -1,0 +1,1539 @@
+{
+  "$defs": {
+    "AreaKind": {
+      "description": "區域的種類，決定有哪些指標與門檻。",
+      "enum": [
+        "buffer",
+        "drive"
+      ],
+      "title": "AreaKind",
+      "type": "string"
+    },
+    "AreaMeta": {
+      "additionalProperties": false,
+      "description": "一個區域。options 是公開的門檻選項清單，鍵是條件的門檻名稱；files 是相對於網站根目錄的路徑。",
+      "properties": {
+        "files": {
+          "items": {
+            "pattern": "^(?:data|geo)/[a-z0-9_]+\\.(?:json|geojson)$",
+            "type": "string"
+          },
+          "title": "Files",
+          "type": "array"
+        },
+        "id": {
+          "pattern": "^[a-z][a-z0-9_]{0,39}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/AreaKind"
+        },
+        "name": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "options": {
+          "additionalProperties": {
+            "items": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "propertyNames": {
+            "enum": [
+              "near_m",
+              "rca_m",
+              "drive_min"
+            ]
+          },
+          "title": "Options",
+          "type": "object"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "kind",
+        "options",
+        "files"
+      ],
+      "title": "AreaMeta",
+      "type": "object"
+    },
+    "BType": {
+      "description": "建物型態。",
+      "enum": [
+        "大樓",
+        "華廈",
+        "公寓",
+        "透天",
+        "其他"
+      ],
+      "title": "BType",
+      "type": "string"
+    },
+    "ConflictValue": {
+      "additionalProperties": false,
+      "description": "某個來源對衝突欄位給的值。",
+      "properties": {
+        "src": {
+          "pattern": "^[a-z][a-z0-9_]{0,39}$",
+          "title": "Src",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Value"
+        }
+      },
+      "required": [
+        "src",
+        "value"
+      ],
+      "title": "ConflictValue",
+      "type": "object"
+    },
+    "DatasetsMeta": {
+      "additionalProperties": false,
+      "properties": {
+        "doorindex": {
+          "$ref": "#/$defs/DoorindexMeta"
+        },
+        "lvr": {
+          "$ref": "#/$defs/LvrMeta"
+        }
+      },
+      "required": [
+        "lvr",
+        "doorindex"
+      ],
+      "title": "DatasetsMeta",
+      "type": "object"
+    },
+    "DoorindexMeta": {
+      "additionalProperties": false,
+      "description": "門牌資料：最後檢查時間與版本。",
+      "properties": {
+        "last_check": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Check"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Version"
+        }
+      },
+      "required": [
+        "last_check",
+        "version"
+      ],
+      "title": "DoorindexMeta",
+      "type": "object"
+    },
+    "Elevator": {
+      "description": "電梯。",
+      "enum": [
+        "yes",
+        "no",
+        "inferred",
+        "unknown"
+      ],
+      "title": "Elevator",
+      "type": "string"
+    },
+    "ErrorCode": {
+      "description": "公開錯誤代碼（C10）。新增代碼只由 WP0 合併。",
+      "enum": [
+        "blocked",
+        "rate_limited",
+        "challenge",
+        "page_invalid",
+        "parse_rate_low",
+        "count_short",
+        "budget_exhausted",
+        "timeout",
+        "http_5xx",
+        "robots_changed",
+        "paused",
+        "tls_error",
+        "doorindex_invalid",
+        "lvr_invalid",
+        "publish_failed",
+        "push_rejected"
+      ],
+      "title": "ErrorCode",
+      "type": "string"
+    },
+    "ExportLoc": {
+      "additionalProperties": false,
+      "description": "匯出的位置。",
+      "properties": {
+        "conflict": {
+          "default": false,
+          "title": "Conflict",
+          "type": "boolean"
+        },
+        "district": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "District"
+        },
+        "lat": {
+          "anyOf": [
+            {
+              "maximum": 90,
+              "minimum": -90,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Lat"
+        },
+        "lon": {
+          "anyOf": [
+            {
+              "maximum": 180,
+              "minimum": -180,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Lon"
+        },
+        "precision": {
+          "$ref": "#/$defs/Precision"
+        }
+      },
+      "required": [
+        "lat",
+        "lon",
+        "precision",
+        "district",
+        "conflict"
+      ],
+      "title": "ExportLoc",
+      "type": "object"
+    },
+    "GroupFacts": {
+      "additionalProperties": false,
+      "description": "群組合併後的事實。每個欄位是值、null 或 \"conflict\"；built_lo/built_hi 是完工日區間。",
+      "properties": {
+        "btype": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BType"
+            },
+            {
+              "const": "conflict",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Btype"
+        },
+        "built_hi": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "const": "conflict",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Built Hi"
+        },
+        "built_lo": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "const": "conflict",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Built Lo"
+        },
+        "community_name": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "const": "conflict",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Community Name"
+        },
+        "elevator": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Elevator"
+            },
+            {
+              "const": "conflict",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Elevator"
+        },
+        "floor_hi": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "const": "conflict",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Floor Hi"
+        },
+        "floor_lo": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "const": "conflict",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Floor Lo"
+        },
+        "floors_total": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "const": "conflict",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Floors Total"
+        },
+        "layout": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "const": "conflict",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Layout"
+        },
+        "main_cp": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "const": "conflict",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Main Cp"
+        },
+        "main_kind": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MainKind"
+            },
+            {
+              "const": "conflict",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Main Kind"
+        },
+        "parking": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Parking"
+            },
+            {
+              "const": "conflict",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parking"
+        },
+        "parking_price_yuan": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "const": "conflict",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parking Price Yuan"
+        },
+        "parking_public": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "const": "conflict",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parking Public"
+        },
+        "price_excl_parking": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "const": "conflict",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Price Excl Parking"
+        },
+        "road_text": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "const": "conflict",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Road Text"
+        },
+        "title_area_cp": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "const": "conflict",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Title Area Cp"
+        }
+      },
+      "required": [
+        "community_name",
+        "road_text",
+        "price_excl_parking",
+        "parking_price_yuan",
+        "main_cp",
+        "main_kind",
+        "title_area_cp",
+        "floor_lo",
+        "floor_hi",
+        "floors_total",
+        "built_lo",
+        "built_hi",
+        "btype",
+        "elevator",
+        "parking",
+        "parking_public",
+        "layout"
+      ],
+      "title": "GroupFacts",
+      "type": "object"
+    },
+    "ListingGroup": {
+      "additionalProperties": false,
+      "description": "一戶（跨站、跨仲介合併後的群組）。price_min、price_max 是在架成員的價格範圍（元）。",
+      "properties": {
+        "baseline": {
+          "title": "Baseline",
+          "type": "boolean"
+        },
+        "conflicts": {
+          "additionalProperties": {
+            "items": {
+              "$ref": "#/$defs/ConflictValue"
+            },
+            "type": "array"
+          },
+          "title": "Conflicts",
+          "type": "object"
+        },
+        "facts": {
+          "$ref": "#/$defs/GroupFacts"
+        },
+        "first_seen": {
+          "format": "date-time",
+          "title": "First Seen",
+          "type": "string"
+        },
+        "gid": {
+          "minimum": 1,
+          "title": "Gid",
+          "type": "integer"
+        },
+        "gone_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Gone At"
+        },
+        "loc": {
+          "$ref": "#/$defs/ExportLoc"
+        },
+        "members": {
+          "items": {
+            "$ref": "#/$defs/ListingMember"
+          },
+          "minItems": 1,
+          "title": "Members",
+          "type": "array"
+        },
+        "metrics": {
+          "$ref": "#/$defs/Metrics"
+        },
+        "price_max": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Price Max"
+        },
+        "price_min": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Price Min"
+        },
+        "relisted_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Relisted At"
+        },
+        "status": {
+          "$ref": "#/$defs/RecordStatus"
+        }
+      },
+      "required": [
+        "gid",
+        "first_seen",
+        "baseline",
+        "status",
+        "gone_at",
+        "relisted_at",
+        "price_min",
+        "price_max",
+        "facts",
+        "conflicts",
+        "loc",
+        "metrics",
+        "members"
+      ],
+      "title": "ListingGroup",
+      "type": "object"
+    },
+    "ListingMember": {
+      "additionalProperties": false,
+      "description": "群組裡的一筆刊登。價格是元。",
+      "properties": {
+        "first_seen": {
+          "format": "date-time",
+          "title": "First Seen",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "price": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Price"
+        },
+        "price_drop_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Price Drop At"
+        },
+        "price_first": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Price First"
+        },
+        "site_original_price": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Site Original Price"
+        },
+        "src": {
+          "pattern": "^[a-z][a-z0-9_]{0,39}$",
+          "title": "Src",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/RecordStatus"
+        }
+      },
+      "required": [
+        "src",
+        "id",
+        "price",
+        "price_first",
+        "price_drop_at",
+        "site_original_price",
+        "first_seen",
+        "status"
+      ],
+      "title": "ListingMember",
+      "type": "object"
+    },
+    "ListingsFile": {
+      "additionalProperties": false,
+      "description": "`data/listings_<area>.json`。groups 依 gid 遞增排序。",
+      "properties": {
+        "area": {
+          "pattern": "^[a-z][a-z0-9_]{0,39}$",
+          "title": "Area",
+          "type": "string"
+        },
+        "groups": {
+          "items": {
+            "$ref": "#/$defs/ListingGroup"
+          },
+          "title": "Groups",
+          "type": "array"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "schema_version",
+        "area",
+        "groups"
+      ],
+      "title": "ListingsFile",
+      "type": "object"
+    },
+    "LvrMeta": {
+      "additionalProperties": false,
+      "description": "實價登錄：最後檢查時間與資料截至日。",
+      "properties": {
+        "as_of": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "As Of"
+        },
+        "last_check": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Check"
+        }
+      },
+      "required": [
+        "last_check",
+        "as_of"
+      ],
+      "title": "LvrMeta",
+      "type": "object"
+    },
+    "MainKind": {
+      "description": "`main_cp` 的口徑。",
+      "enum": [
+        "main",
+        "main_plus_aux"
+      ],
+      "title": "MainKind",
+      "type": "string"
+    },
+    "Meta": {
+      "additionalProperties": false,
+      "description": "`data/meta.json`。時間都是 UTC；freshness_hours 是各來源的過期門檻（小時）。",
+      "properties": {
+        "areas": {
+          "items": {
+            "$ref": "#/$defs/AreaMeta"
+          },
+          "title": "Areas",
+          "type": "array"
+        },
+        "build_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$",
+          "title": "Build Id",
+          "type": "string"
+        },
+        "datasets": {
+          "$ref": "#/$defs/DatasetsMeta"
+        },
+        "freshness_hours": {
+          "patternProperties": {
+            "^[a-z][a-z0-9_]{0,39}$": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          "title": "Freshness Hours",
+          "type": "object"
+        },
+        "generated_at": {
+          "format": "date-time",
+          "title": "Generated At",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "sources": {
+          "items": {
+            "$ref": "#/$defs/SourceMeta"
+          },
+          "title": "Sources",
+          "type": "array"
+        },
+        "status": {
+          "$ref": "#/$defs/MetaStatus"
+        }
+      },
+      "required": [
+        "schema_version",
+        "build_id",
+        "generated_at",
+        "status",
+        "sources",
+        "datasets",
+        "areas",
+        "freshness_hours"
+      ],
+      "title": "Meta",
+      "type": "object"
+    },
+    "MetaStatus": {
+      "description": "網站資料的狀態。",
+      "enum": [
+        "building",
+        "ready"
+      ],
+      "title": "MetaStatus",
+      "type": "string"
+    },
+    "Metrics": {
+      "additionalProperties": false,
+      "description": "範圍指標，不含任何門檻。\n\n- buffer 區域：d_zhonglu_m、d_yiwen_m、d_rca_m（整數公尺，在範圍內是 0），\n  只給門牌或網站座標精度；路段精度改給 road_frac，鍵是 \"n<周邊>_r<RCA>\"。\n- drive 區域：in_district、drive_min（包含這點的最小車程檔，沒有就是 null）；\n  路段精度改給 road_frac，鍵是 \"<分鐘>\"。\n- road_frac 的值是 0..1 的比例。",
+      "properties": {
+        "d_rca_m": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "D Rca M"
+        },
+        "d_yiwen_m": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "D Yiwen M"
+        },
+        "d_zhonglu_m": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "D Zhonglu M"
+        },
+        "drive_min": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Drive Min"
+        },
+        "in_district": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "In District"
+        },
+        "road_frac": {
+          "anyOf": [
+            {
+              "patternProperties": {
+                "^(?:n\\d{1,5}_r\\d{1,5}|\\d{1,3})$": {
+                  "maximum": 1,
+                  "minimum": 0,
+                  "type": "number"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Road Frac"
+        }
+      },
+      "required": [
+        "d_zhonglu_m",
+        "d_yiwen_m",
+        "d_rca_m",
+        "in_district",
+        "drive_min",
+        "road_frac"
+      ],
+      "title": "Metrics",
+      "type": "object"
+    },
+    "Parking": {
+      "description": "車位類型。",
+      "enum": [
+        "ramp_flat",
+        "ground_flat",
+        "lift_flat",
+        "flat_unknown_access",
+        "mechanical",
+        "mixed_with_flat",
+        "mixed_no_flat",
+        "none",
+        "unknown"
+      ],
+      "title": "Parking",
+      "type": "string"
+    },
+    "Precision": {
+      "description": "位置精度。",
+      "enum": [
+        "site",
+        "door",
+        "community",
+        "road",
+        "none"
+      ],
+      "title": "Precision",
+      "type": "string"
+    },
+    "RecordStatus": {
+      "description": "刊登或群組的狀態。",
+      "enum": [
+        "active",
+        "gone"
+      ],
+      "title": "RecordStatus",
+      "type": "string"
+    },
+    "SourceMeta": {
+      "additionalProperties": false,
+      "description": "一個來源的狀態。error_code 只放公開代碼。",
+      "properties": {
+        "error_code": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ErrorCode"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "id": {
+          "pattern": "^[a-z][a-z0-9_]{0,39}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "last_full_ok": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Full Ok"
+        },
+        "last_ok": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Ok"
+        },
+        "paused_until": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Paused Until"
+        },
+        "publish": {
+          "title": "Publish",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "publish",
+        "last_ok",
+        "last_full_ok",
+        "paused_until",
+        "error_code"
+      ],
+      "title": "SourceMeta",
+      "type": "object"
+    },
+    "TxFile": {
+      "additionalProperties": false,
+      "description": "`data/tx_<area>.json`。tx 依 serial 遞增排序；as_of 是資料截至的日期。",
+      "properties": {
+        "area": {
+          "pattern": "^[a-z][a-z0-9_]{0,39}$",
+          "title": "Area",
+          "type": "string"
+        },
+        "as_of": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "As Of"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "tx": {
+          "items": {
+            "$ref": "#/$defs/TxRecord"
+          },
+          "title": "Tx",
+          "type": "array"
+        }
+      },
+      "required": [
+        "schema_version",
+        "area",
+        "as_of",
+        "tx"
+      ],
+      "title": "TxFile",
+      "type": "object"
+    },
+    "TxParking": {
+      "additionalProperties": false,
+      "description": "成交裡的一個車位。price 是元，area_cm2 是 0.01 m²。",
+      "properties": {
+        "area_cm2": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Area Cm2"
+        },
+        "price": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Price"
+        },
+        "ptype": {
+          "$ref": "#/$defs/Parking"
+        }
+      },
+      "required": [
+        "ptype",
+        "price",
+        "area_cm2"
+      ],
+      "title": "TxParking",
+      "type": "object"
+    },
+    "TxRecord": {
+      "additionalProperties": false,
+      "description": "一筆成交。total 是元；main_cm2 是 0.01 m²；built_lo/built_hi 是完工日區間。",
+      "properties": {
+        "addr": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Addr"
+        },
+        "btype": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BType"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "built_hi": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Built Hi"
+        },
+        "built_lo": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Built Lo"
+        },
+        "date": {
+          "format": "date",
+          "title": "Date",
+          "type": "string"
+        },
+        "district": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "District",
+          "type": "string"
+        },
+        "elevator": {
+          "$ref": "#/$defs/Elevator"
+        },
+        "flags": {
+          "items": {
+            "pattern": "^[a-z][a-z0-9_]{0,39}$",
+            "type": "string"
+          },
+          "title": "Flags",
+          "type": "array"
+        },
+        "floor_hi": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Floor Hi"
+        },
+        "floor_lo": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Floor Lo"
+        },
+        "floors_total": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Floors Total"
+        },
+        "lat": {
+          "anyOf": [
+            {
+              "maximum": 90,
+              "minimum": -90,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Lat"
+        },
+        "lon": {
+          "anyOf": [
+            {
+              "maximum": 180,
+              "minimum": -180,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Lon"
+        },
+        "main_cm2": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Main Cm2"
+        },
+        "metrics": {
+          "$ref": "#/$defs/Metrics"
+        },
+        "parking": {
+          "items": {
+            "$ref": "#/$defs/TxParking"
+          },
+          "title": "Parking",
+          "type": "array"
+        },
+        "precision": {
+          "$ref": "#/$defs/Precision"
+        },
+        "serial": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$",
+          "title": "Serial",
+          "type": "string"
+        },
+        "total": {
+          "minimum": 0,
+          "title": "Total",
+          "type": "integer"
+        },
+        "up": {
+          "$ref": "#/$defs/UnitPrice"
+        }
+      },
+      "required": [
+        "serial",
+        "date",
+        "district",
+        "addr",
+        "lat",
+        "lon",
+        "precision",
+        "btype",
+        "floor_lo",
+        "floor_hi",
+        "floors_total",
+        "main_cm2",
+        "built_lo",
+        "built_hi",
+        "elevator",
+        "parking",
+        "total",
+        "up",
+        "flags",
+        "metrics"
+      ],
+      "title": "TxRecord",
+      "type": "object"
+    },
+    "UnitPrice": {
+      "additionalProperties": false,
+      "description": "扣車位單價的分子與分母區間。\n\nq 是扣車位後的金額（元），k 是扣車位後的面積（0.01 m²）。\n上下界的交叉配對與換算只在瀏覽器做（r4 §2.2 #4）。",
+      "properties": {
+        "basis": {
+          "$ref": "#/$defs/UpBasis"
+        },
+        "k_hi": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "K Hi"
+        },
+        "k_lo": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "K Lo"
+        },
+        "q_hi": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Q Hi"
+        },
+        "q_lo": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Q Lo"
+        }
+      },
+      "required": [
+        "basis",
+        "q_lo",
+        "q_hi",
+        "k_lo",
+        "k_hi"
+      ],
+      "title": "UnitPrice",
+      "type": "object"
+    },
+    "UpBasis": {
+      "description": "扣車位單價的口徑。",
+      "enum": [
+        "official",
+        "estimated",
+        "none"
+      ],
+      "title": "UpBasis",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "anyOf": [
+    {
+      "$ref": "#/$defs/Meta"
+    },
+    {
+      "$ref": "#/$defs/ListingsFile"
+    },
+    {
+      "$ref": "#/$defs/TxFile"
+    }
+  ],
+  "description": "由 src/house_watch/models.py 產生，不要手改。",
+  "title": "house_watch 匯出 JSON"
+}

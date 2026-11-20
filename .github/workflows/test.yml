@@ -1,0 +1,38 @@
+# 只跑測試：不抓任何網站、不需要密鑰、沒有排程觸發。
+name: test
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      # 第一次推上 GitHub 之前，要核對這個 commit SHA 確實是 actions/checkout v4.2.2（本機離線寫入，未連網核對）。
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      # 用 runner 內建的 pipx 安裝固定版本的 uv，少一個要核對的 action。
+      - name: Install uv
+        run: pipx install uv==0.12.3
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Python tests
+        run: uv run pytest -q
+
+      - name: Lint
+        run: uv run ruff check
+
+      # 用 runner 內建的 Node。Node 22 起 `node --test <資料夾>` 會失敗，所以用 shell 展開檔名。
+      - name: JavaScript tests
+        run: |
+          node --version
+          node --test web/test/*.test.mjs

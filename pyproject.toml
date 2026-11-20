@@ -1,0 +1,58 @@
+[project]
+name = "house-watch"
+version = "0.1.0"
+description = "桃園找房雷達：追蹤開價物件與實價登錄，結果放在靜態網頁上。"
+readme = "README.md"
+requires-python = ">=3.12"
+# 版本一律固定。2026-11-21 以「至少發布兩週」為條件解析，套件選擇見 PLAN 審查 r4 §3.9。
+dependencies = [
+    "beautifulsoup4==4.15.0",
+    "defusedxml==0.7.1",
+    "filelock==4.2.9",
+    "httpx==0.28.1",
+    "platformdirs==4.14.5",
+    "pydantic==2.14.3",
+    "shapely==2.2.0",
+    "tzdata==2026.6",
+]
+
+[project.scripts]
+house-watch = "house_watch.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest==9.2.0",
+    "ruff==0.17.4",
+]
+
+[build-system]
+requires = ["hatchling==1.27.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/house_watch"]
+
+# 網頁檔跟著 wheel 一起安裝，執行時用 importlib.resources 讀（r4 §3.7）。
+[tool.hatch.build.targets.wheel.force-include]
+"web" = "house_watch/web"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# 暫存檔放在 repo 內被忽略的資料夾，不寫到系統暫存區。
+addopts = ["--strict-markers", "--basetemp=.pytest_tmp"]
+markers = [
+    "allow_loopback: 允許這個測試連到本機 loopback（例如測試 serve）；外部網路一律擋掉",
+]
+xfail_strict = true
+filterwarnings = ["error"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+# PLW1514（open 沒寫 encoding）是 preview 規則，要開 preview 才會生效（R2-16）。
+preview = true
+explicit-preview-rules = true
+select = ["E4", "E7", "E9", "F", "W", "I", "B", "UP", "DTZ", "S501", "PLW1514"]

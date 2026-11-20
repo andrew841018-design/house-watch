@@ -1,0 +1,201 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "name": "seed_tx_all_criteria_match",
+      "kind": "tx",
+      "today": "2026-06-15",
+      "profile": {
+        "name": "示意條件甲",
+        "area": "taoyuan_core",
+        "price_max_wan": 1234,
+        "built_years": [2, 9],
+        "floor": [4, 9],
+        "main_min_ping": 23,
+        "elevator": {"required": true, "inferred_ok": true},
+        "parking_ok": ["ramp_flat", "ground_flat"],
+        "lift_flat_ok": false,
+        "near_m": 300,
+        "rca_m": 300,
+        "unit_price_max_wan": 29,
+        "tx_months": 9
+      },
+      "rec": {
+        "area": "taoyuan_core",
+        "serial": "SEEDTX0001",
+        "date": "2026-03-10",
+        "district": "桃園區",
+        "addr": "桃園區示意路一段1~30號",
+        "lat": 25.0,
+        "lon": 121.3,
+        "precision": "door",
+        "btype": "大樓",
+        "floor_lo": 6,
+        "floor_hi": 6,
+        "floors_total": 14,
+        "main_cm2": 9000,
+        "built_lo": "2020-05-01",
+        "built_hi": "2020-05-01",
+        "elevator": "yes",
+        "parking": [{"ptype": "ramp_flat", "price": 1500000, "area_cm2": 3000}],
+        "total": 11000000,
+        "up": {"basis": "official", "q_lo": 9500000, "q_hi": 9500000, "k_lo": 12000, "k_hi": 12000},
+        "flags": [],
+        "metrics": {
+          "d_zhonglu_m": 120,
+          "d_yiwen_m": 3500,
+          "d_rca_m": 2400,
+          "in_district": null,
+          "drive_min": null,
+          "road_frac": null
+        }
+      },
+      "expect": {"status": "match", "reasons": []}
+    },
+    {
+      "name": "seed_listing_price_missing_pending",
+      "kind": "listing",
+      "today": "2026-06-15",
+      "profile": {
+        "name": "示意條件甲",
+        "area": "taoyuan_core",
+        "price_max_wan": 1234,
+        "built_years": [2, 9],
+        "floor": [4, 9],
+        "main_min_ping": 23,
+        "elevator": {"required": true, "inferred_ok": true},
+        "parking_ok": ["ramp_flat", "ground_flat"],
+        "lift_flat_ok": false,
+        "near_m": 300,
+        "rca_m": 300,
+        "unit_price_max_wan": 29,
+        "tx_months": 9
+      },
+      "rec": {
+        "area": "taoyuan_core",
+        "gid": 101,
+        "first_seen": "2026-05-01T02:00:00Z",
+        "baseline": false,
+        "status": "active",
+        "gone_at": null,
+        "relisted_at": null,
+        "price_min": null,
+        "price_max": null,
+        "facts": {
+          "community_name": "示意社區",
+          "road_text": "示意路一段",
+          "price_excl_parking": false,
+          "parking_price_yuan": null,
+          "main_cp": 2800,
+          "main_kind": "main",
+          "title_area_cp": 4600,
+          "floor_lo": 7,
+          "floor_hi": 7,
+          "floors_total": 15,
+          "built_lo": "2021-01-01",
+          "built_hi": "2021-12-31",
+          "btype": "大樓",
+          "elevator": "yes",
+          "parking": "ramp_flat",
+          "parking_public": false,
+          "layout": "3房2廳2衛"
+        },
+        "conflicts": {},
+        "loc": {"lat": 25.0, "lon": 121.3, "precision": "site", "district": "桃園區", "conflict": false},
+        "metrics": {
+          "d_zhonglu_m": 150,
+          "d_yiwen_m": 3300,
+          "d_rca_m": 2200,
+          "in_district": null,
+          "drive_min": null,
+          "road_frac": null
+        },
+        "members": [
+          {
+            "src": "cthouse",
+            "id": "SEED-L101",
+            "price": null,
+            "price_first": null,
+            "price_drop_at": null,
+            "site_original_price": null,
+            "first_seen": "2026-05-01T02:00:00Z",
+            "status": "active"
+          }
+        ]
+      },
+      "expect": {"status": "pending", "reasons": ["price_missing"]}
+    },
+    {
+      "name": "seed_listing_age_boundary_pending",
+      "kind": "listing",
+      "today": "2026-06-15",
+      "profile": {
+        "name": "示意條件乙",
+        "area": "zhongli_ic",
+        "price_max_wan": 1234,
+        "built_years": [2, 9],
+        "floor": [4, 9],
+        "main_min_ping": 23,
+        "elevator": {"required": true, "inferred_ok": true},
+        "parking_ok": ["ramp_flat", "ground_flat"],
+        "lift_flat_ok": false,
+        "drive_min": 10,
+        "unit_price_max_wan": 29,
+        "tx_months": 9
+      },
+      "rec": {
+        "area": "zhongli_ic",
+        "gid": 202,
+        "first_seen": "2026-04-20T03:00:00Z",
+        "baseline": true,
+        "status": "active",
+        "gone_at": null,
+        "relisted_at": null,
+        "price_min": 11800000,
+        "price_max": 11800000,
+        "facts": {
+          "community_name": "示意二社區",
+          "road_text": "示意路二段",
+          "price_excl_parking": false,
+          "parking_price_yuan": null,
+          "main_cp": 2800,
+          "main_kind": "main",
+          "title_area_cp": 4600,
+          "floor_lo": 7,
+          "floor_hi": 7,
+          "floors_total": 15,
+          "built_lo": "2017-03-01",
+          "built_hi": "2018-02-28",
+          "btype": "大樓",
+          "elevator": "yes",
+          "parking": "ramp_flat",
+          "parking_public": false,
+          "layout": "3房2廳2衛"
+        },
+        "conflicts": {},
+        "loc": {"lat": 24.96, "lon": 121.22, "precision": "site", "district": "中壢區", "conflict": false},
+        "metrics": {
+          "d_zhonglu_m": null,
+          "d_yiwen_m": null,
+          "d_rca_m": null,
+          "in_district": true,
+          "drive_min": 6,
+          "road_frac": null
+        },
+        "members": [
+          {
+            "src": "hbhousing",
+            "id": "SEED-L202",
+            "price": 11800000,
+            "price_first": 11800000,
+            "price_drop_at": null,
+            "site_original_price": null,
+            "first_seen": "2026-04-20T03:00:00Z",
+            "status": "active"
+          }
+        ]
+      },
+      "expect": {"status": "pending", "reasons": ["age_boundary"]}
+    }
+  ]
+}

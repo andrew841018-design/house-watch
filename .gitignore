@@ -1,0 +1,26 @@
+# 個人設定、資料與暫存檔：用寬鬆的樣式（R2-03）。
+# 本機設定與資料預設本來就放在 repo 外（platformdirs）；這裡是第二道防線。
+config/local*
+*.swp
+*~
+*.bak
+._*
+data/
+site/
+*.sqlite*
+.DS_Store
+
+# 套件內附的資料（geo 檔等）要進 git，所以把這個 data/ 加回來。
+!/src/house_watch/data/
+
+# 開發環境與工具快取
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.pytest_tmp/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+node_modules/
