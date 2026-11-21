@@ -45,6 +45,7 @@ from house_watch import __version__
 from house_watch.clock import Clock, SystemClock, from_iso, taipei_date, to_iso
 from house_watch.db import transaction
 from house_watch.errors import ErrorCode, HouseWatchError
+from house_watch.ledger import FetchLedger
 from house_watch.settings import HttpConfig, Settings, SourceConfig, TlsConfig
 from house_watch.sources import robots
 from house_watch.sources.base import FETCHED_AT_HEADER, Adapter, Blocked, Fetch, RequestSpec, Resp
@@ -169,10 +170,14 @@ _STATE_COLUMNS = frozenset({"paused_until", "backoff_level", "robots_hash", "las
 
 
 class StateStore:
-    """source_state 與 kv 的讀寫。每次寫入都是自己的短交易。"""
+    """source_state 與 kv 的讀寫。每次寫入都是自己的短交易。
 
-    def __init__(self, conn: Any) -> None:
+    每日請求數另外記在所有資料夾共用的帳本（ledger，SA-1），requests_on 取兩者較大值。
+    """
+
+    def __init__(self, conn: Any, ledger: FetchLedger | None = None) -> None:
         self.conn = conn
+        self.ledger = ledger if ledger is not None else FetchLedger()
 
     @contextmanager
     def _write(self) -> Iterator[Any]:
@@ -235,7 +240,11 @@ class StateStore:
         self.update_state(source, last_error=code)
 
     def requests_on(self, source: str, day: dt.date) -> int:
-        """這個來源在這個台北日期已送出的請求數。"""
+        """這個來源在這個台北日期已送出的請求數：本資料夾的紀錄和共用帳本取較大值（SA-1）。"""
+        return max(self.db_requests_on(source, day), self.ledger.requests_on(source, day))
+
+    def db_requests_on(self, source: str, day: dt.date) -> int:
+        """只看本資料夾 DB 的紀錄。"""
         raw = self.kv_get(_COUNT_KEY.format(source=source))
         try:
             data = json.loads(raw) if raw else {}
@@ -321,8 +330,10 @@ class Fetcher:
         clock: Clock | None = None,
         transport: httpx.BaseTransport | None = None,
         sleep: Callable[[float], None] = time.sleep,
+        ledger: FetchLedger | None = None,
     ) -> None:
-        self.store = StateStore(conn)
+        self.store = StateStore(conn, ledger)
+        self.ledger = self.store.ledger
         self._http = http
         self._policies = dict(policies)
         self._relax = frozenset(h.lower() for h in (tls.relax_strict_hosts if tls else ()))
@@ -389,10 +400,14 @@ class Fetcher:
         return self._follow(spec, source, policy, deadline)
 
     def _gate_pause(self, source: str) -> None:
-        state = self.store.state(source)
+        """本資料夾或共用帳本（別的資料夾被擋過）任一邊還在暫停，就不送。"""
         now = self._clock.now()
-        if state.paused_until is not None and state.paused_until > now:
-            raise Blocked(ErrorCode.PAUSED, (state.paused_until - now).total_seconds())
+        until = self.store.state(source).paused_until
+        shared = self.ledger.paused_until(source)
+        if shared is not None and (until is None or shared > until):
+            until = shared
+        if until is not None and until > now:
+            raise Blocked(ErrorCode.PAUSED, (until - now).total_seconds())
 
     def _ensure_robots(self, source: str, policy: SourcePolicy, deadline: float) -> None:
         configured = self._accepted.get(source)
@@ -471,6 +486,7 @@ class Fetcher:
             self._on_soft_failure(source, ErrorCode.TIMEOUT, "連線錯誤")
         finally:
             self._last_done[host] = self._clock.monotonic()
+            self.ledger.mark_host(host, self._clock.now().timestamp())
         self._on_success(source)
         resp_headers[FETCHED_AT_HEADER] = to_iso(self._clock.now())
         return Resp(status=status, headers=resp_headers, body=content, url=final_url)
@@ -518,6 +534,9 @@ class Fetcher:
         now = self._clock.monotonic()
         last = self._last_done.get(host)
         wait = 0.0 if last is None else max(0.0, last + interval - now)
+        shared = self.ledger.host_last(host)  # 別的程序（別的資料夾）最後一次打這個主機
+        if shared is not None:
+            wait = max(wait, shared + interval - self._clock.now().timestamp())
         if now + wait >= deadline:
             raise DeadlineReached(ErrorCode.TIMEOUT, "本次執行的截止時間到了")
         if wait > 0:
@@ -534,9 +553,10 @@ class Fetcher:
 
     def _count_request(self, source: str) -> None:
         today = taipei_date(self._clock.now())
-        count = self.store.requests_on(source, today) + 1
+        count = self.store.db_requests_on(source, today) + 1
         payload = json.dumps({"date": today.isoformat(), "n": count}, separators=(",", ":"))
         self.store.kv_set(_COUNT_KEY.format(source=source), payload)
+        self.ledger.add_request(source, today)
         self.requests_sent[source] = self.requests_sent.get(source, 0) + 1
 
     def _pause(self, source: str, code: ErrorCode, minimum: dt.timedelta) -> dt.timedelta:
@@ -545,6 +565,7 @@ class Fetcher:
         level = self.store.state(source).backoff_level + 1
         pause = max(_backoff(level), minimum)
         until = now + pause
+        self.ledger.set_paused(source, until)  # 別的資料夾也要停
         self.store.update_state(source, paused_until=until, backoff_level=level, last_error=code.value)
         self.store.kv_set(_RESET_KEY.format(source=source), to_iso(until + BACKOFF_QUIET_RESET))
         self.store.kv_delete(_SOFT_KEY.format(source=source))

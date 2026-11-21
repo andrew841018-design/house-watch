@@ -90,3 +90,4 @@ def _isolated_dirs(tmp_path_factory, monkeypatch):
     config.write_text("", encoding="utf-8")
     monkeypatch.setenv("HOUSE_WATCH_DATA_DIR", str(base / "data"))
     monkeypatch.setenv("HOUSE_WATCH_CONFIG", str(config))
+    monkeypatch.setenv("HOUSE_WATCH_LEDGER", str(base / "ledger" / "fetch_ledger.json"))
