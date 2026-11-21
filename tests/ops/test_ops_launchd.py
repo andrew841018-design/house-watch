@@ -193,6 +193,23 @@ def test_schedule_command_carries_the_installer_paths_into_the_plist(
     assert env["PATH"] == launchd.LAUNCHD_PATH and env["LANG"] == "en_US.UTF-8"
 
 
+def test_schedule_command_runs_every_hour_by_default(monkeypatch, tmp_path, capsys, no_subprocess):
+    """r4 §3.5：時段內每小時觸發一次（08–23 點共 16 次）。探測每 3 小時是 pipeline.scan 的事，
+    不是排程的頻率；沒加 --every-hours 重裝時不能悄悄降成每 3 小時。"""
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setenv(launchd.ENV_RUNTIME_DIR, str(tmp_path / "runtime"))
+    monkeypatch.setenv("HOUSE_WATCH_LOG_DIR", str(tmp_path / "logs"))
+    monkeypatch.setattr(launchd, "launch_agents_dir", lambda: tmp_path / "LaunchAgents")
+    monkeypatch.setattr(launchd, "TCC_HOME_DIRS", ())
+    monkeypatch.setattr(launchd, "source_checkout", lambda: None)
+    _fake_runtime(tmp_path / "runtime")
+    assert launchd.run_schedule(action="install", every_hours=None) == 0
+    capsys.readouterr()
+    written = plistlib.loads(launchd.plist_path(tmp_path / "LaunchAgents").read_bytes())
+    times = written["StartCalendarInterval"]
+    assert len(times) == 16 and len({(t["Hour"], t["Minute"]) for t in times}) == 16
+
+
 def test_schedule_environment_writes_set_paths_as_absolute(tmp_path):
     """相對路徑以安裝當下的工作目錄為準（排程的工作目錄是執行區）；~ 展開；
     沒設、空字串的不寫（排程端會用和安裝端一樣的預設）；其他變數一律不帶。"""

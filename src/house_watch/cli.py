@@ -946,7 +946,7 @@ def build_parser() -> argparse.ArgumentParser:
         type=_hours,
         default=None,
         metavar="N",
-        help="時段內每 N 小時執行一次（預設是公開設定的 probe_every_hours）",
+        help="時段內每 N 小時執行一次（預設每小時；探測間隔另由公開設定 probe_every_hours 決定）",
     )
     schedule.set_defaults(handler=cmd_schedule)
 

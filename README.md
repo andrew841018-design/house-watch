@@ -69,16 +69,17 @@ RT=~/Library/Application\ Support/house_watch_runtime/bin/house-watch
   換成絕對路徑寫進 plist，所以要用和平常一樣的環境變數執行它。改了這些路徑，要重新執行一次。
 - 執行區、log、設定檔、資料夾都不能放在 `~/Desktop`、`~/Documents`、`~/Downloads` 或外接磁碟：
   macOS 的隱私保護會擋住背景程式，`schedule install` 會直接拒絕。
-  時段是公開設定的 `[schedule] window_hours`（台北時間），預設每 3 小時一次（08、11、14、17、20、23 點），
+  時段是公開設定的 `[schedule] window_hours`（台北時間），預設每小時一次（08–23 點，一天 16 次；
+  探測仍是每 3 小時，由程式依紀錄決定），
   可以用 `--every-hours N` 改；安裝時換成這台電腦的本機時間。
 - Mac 睡眠時錯過的那一輪，醒來後 launchd 會補跑一次；關機時錯過的不補，下一個時段自然補上。
 - 停用：`house-watch schedule remove` 會刪掉 plist，並印出要執行的 `launchctl bootout` 指令。
 
 ### 其他系統
 
-- cron：`0 8-23/3 * * * /絕對路徑/house-watch tick`（cron 用本機時間；資料夾與設定照 platformdirs，
+- cron：`0 8-23 * * * /絕對路徑/house-watch tick`（cron 用本機時間；資料夾與設定照 platformdirs，
   或用上面的環境變數指定）。
-- Windows 工作排程器：動作是 `house-watch.exe tick`，每天 08:00 觸發、每 3 小時重複一次、持續 15 小時。
+- Windows 工作排程器：動作是 `house-watch.exe tick`，每天 08:00 觸發、每 1 小時重複一次、持續 15 小時。
 
 ## 發布（獨立的網站 repo）
 

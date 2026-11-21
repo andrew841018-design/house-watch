@@ -134,10 +134,21 @@ def test_broken_page_fails_the_scan_and_parse_rate_is_checked(env, site):
     assert env.conn.execute("SELECT count(*) FROM listings").fetchone()[0] == 0
     env.clock.advance(DAY)
     site.mode = "normal"
-    site.add(Unit(id="U7", broken=True))  # 一張卡片解析不出來：6 張裡壞 1 張，低於 98%
+    site.add(Unit(id="U7", broken=True))  # 一張卡片解析不出來：6 張裡壞 1 張，低於 95%
     env.update()
     assert statuses(env)[-1] == ("full", "invalid", "parse_rate_low")
     assert env.conn.execute("SELECT count(*) FROM listings").fetchone()[0] == 5, "看到的照樣記"
+
+
+def test_parse_rate_threshold_is_95_percent(env, site):
+    """r4 §3.4 第 5 條：解析率 ≥ 95%。20 張壞 1 張（剛好 95%）有效；21 張壞 2 張（約 90%）無效。"""
+    site.add(*[Unit(id=f"G{n}", floor=n % 10 + 2) for n in range(19)], Unit(id="B1", broken=True))
+    env.update()
+    assert statuses(env)[-1] == ("full", "ok", None)
+    env.clock.advance(DAY)
+    site.add(Unit(id="B2", broken=True))
+    env.update()
+    assert statuses(env)[-1] == ("full", "invalid", "parse_rate_low")
 
 
 def test_budget_too_small_for_a_full_scan_is_not_started(env, site):

@@ -24,8 +24,9 @@ uv.lock（`uv export` 產生 constraints）。升級步驟見 README。
 **plist**：
 - ProgramArguments 是執行區裡的 `house-watch tick`（絕對路徑）。
 - StartCalendarInterval：公開設定 `[schedule] window_hours` 的範圍內，每 N 小時一次的整點
-  （預設 N＝probe_every_hours＝3：08、11、14、17、20、23）。時段是台北時間，安裝時換成這台
-  電腦的本機時間（launchd 用本機時間，R1-25）。
+  （預設 N＝TICK_EVERY_HOURS＝1，r4 §3.5：每小時觸發一次）。探測每 probe_every_hours 小時一次
+  是 pipeline.scan 依紀錄決定的，不是排程的頻率。時段是台北時間，安裝時換成這台電腦的本機時間
+  （launchd 用本機時間，R1-25）。
 - 明確的 PATH（含 /usr/bin，發布要用 git 與 ssh）、WorkingDirectory、標準輸出／錯誤導到 log 資料夾。
 - 安裝當下設了的 HOUSE_WATCH_CONFIG、HOUSE_WATCH_DATA_DIR、HOUSE_WATCH_LOG_DIR、
   HOUSE_WATCH_RUNTIME_DIR，換成絕對路徑寫進 EnvironmentVariables。排程跑 tick 時沒有安裝
@@ -61,6 +62,7 @@ RUNTIME_APP_NAME = "house_watch_runtime"
 ENV_RUNTIME_DIR = "HOUSE_WATCH_RUNTIME_DIR"
 # 排程要沿用的路徑變數（安裝當下設了才寫進 plist）；plist 只多寫這幾個。
 SCHEDULE_ENV_KEYS = (paths.ENV_CONFIG, paths.ENV_DATA_DIR, ENV_LOG_DIR, ENV_RUNTIME_DIR)
+TICK_EVERY_HOURS = 1  # r4 §3.5：時段內每小時觸發一次
 LAUNCHD_PATH = "/usr/bin:/bin:/usr/sbin:/sbin"
 # macOS 隱私保護（TCC）擋住背景程式讀寫的位置；排程的執行檔、工作目錄、log 都不能放這些地方。
 TCC_HOME_DIRS = ("Desktop", "Documents", "Downloads")
@@ -328,7 +330,7 @@ def run_schedule(*, action: str, every_hours: int | None = None) -> int:
     env = schedule_environment(os.environ)
     result = install_schedule(
         window=schedule.window_hours,
-        every_hours=every_hours or schedule.probe_every_hours,
+        every_hours=every_hours or TICK_EVERY_HOURS,
         layout=RuntimeLayout(runtime_dir()),
         logs=log_dir(),
         agents_dir=agents,

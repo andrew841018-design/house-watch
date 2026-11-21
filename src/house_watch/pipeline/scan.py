@@ -24,7 +24,8 @@ ctx 是 cli.StepContext（settings、conn、data、clock、deadline、areas、so
    沒有總數的站讀到沒有下一頁為止。否則 invalid（count_short）。
 4. 筆數 ≥ 1，而且不少於同一範圍上一次有效完整掃描的 PREVIOUS_RATIO_MIN；否則 invalid
    （count_short），擁有者可以用 `update --accept-scan <id>` 手動接受。
-5. 卡片的解析成功率 ≥ PARSE_RATE_MIN（skipped 的卡片才算失敗；廣告、置頂與重複卡不算）；
+5. 卡片的解析成功率 ≥ PARSE_RATE_MIN_PERCENT（95%，r4 §3.4 第 5 條；skipped 的卡片才算失敗，
+   也就是轉接器讀不出編號或價格的卡片；廣告、置頂與重複卡不算）；
    否則 invalid（parse_rate_low）。
 6. 在本次的請求上限（max_requests_full）、每日上限與截止時間內做完；否則 failed
    （budget_exhausted、timeout）。開始前先用上次的頁數估，確定做不完就不開始（不浪費請求）。
@@ -71,7 +72,7 @@ ADAPTERS: dict[str, str] = {
 
 PAGE_FILL_MIN = 0.9
 PREVIOUS_RATIO_MIN = 0.5
-PARSE_RATE_MIN = 0.98
+PARSE_RATE_MIN_PERCENT = 95  # 用整數比，避開浮點邊界
 FULL_ATTEMPTS_PER_DAY = 3
 TRANSIENT_CODES = frozenset({ErrorCode.HTTP_5XX, ErrorCode.TIMEOUT, ErrorCode.TLS_ERROR})
 
@@ -270,7 +271,7 @@ def _validity(
     """讀完的完整掃描算不算有效（r4 §3.4 第 2–5 條）。"""
     if cards == 0 or result.parsed == 0:
         return SCAN_INVALID, ErrorCode.COUNT_SHORT
-    if (cards - skipped) < PARSE_RATE_MIN * cards:
+    if 100 * (cards - skipped) < PARSE_RATE_MIN_PERCENT * cards:
         return SCAN_INVALID, ErrorCode.PARSE_RATE_LOW
     if short_page:
         return SCAN_INVALID, ErrorCode.COUNT_SHORT
