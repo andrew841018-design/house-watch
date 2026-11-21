@@ -1,5 +1,5 @@
 {
- "note": "實價登錄真實成交（公開資料）的 golden 案例。只保留單價計算會讀的欄位；地址、樓層、完工日、備註換成佔位字或空白（扣車位單價用不到）。中位數是示意值，不是任何區的真實行情。預期值由另一支獨立的計算產生，並逐筆和官方單價欄交叉檢查。",
+ "note": "實價登錄真實成交（公開資料）的 golden 案例。只保留單價計算會讀的欄位；地址、樓層、完工日、備註換成佔位字或空白（扣車位單價用不到）。其中 10 筆是從桃園市全市季檔（115S1–115S3）依各類別的車位結構條件，以固定 seed（random.Random(20261121)）隨機抽出，不依價格、屋齡、樓層、坪數或區域挑選。中位數是示意值，不是任何區的真實行情。預期值由另一支獨立的計算產生，並逐筆和官方單價欄交叉檢查。",
  "min_samples": 20,
  "medians": [
   {
@@ -158,108 +158,109 @@
  ],
  "cases": [
   {
-   "serial": "RPQPMLSJRHLGFAH56DA",
+   "serial": "RPQOMLTJMHLGFBH78DA",
    "category": "official",
    "basis": "official",
-   "q_lo": 18200000,
-   "q_hi": 18200000,
-   "k_lo": 19041,
-   "k_hi": 19041,
+   "q_lo": 7100000,
+   "q_hi": 7100000,
+   "k_lo": 7250,
+   "k_hi": 7250,
    "flags": []
   },
   {
-   "serial": "RPUOMLRJQHLGFAH66DA",
+   "serial": "RPSOMLMLOHLGFAH58DA",
    "category": "official",
    "basis": "official",
-   "q_lo": 15900000,
-   "q_hi": 15900000,
-   "k_lo": 13064,
-   "k_hi": 13064,
+   "q_lo": 11000000,
+   "q_hi": 11000000,
+   "k_lo": 10478,
+   "k_hi": 10478,
    "flags": []
   },
   {
-   "serial": "RPQQMLPKJHLGFBH38DA",
+   "serial": "RPTPMLQJJHLGFBH58DA",
    "category": "price_bundled_area_reg",
    "basis": "estimated",
-   "q_lo": 32620000,
-   "q_hi": 33100000,
-   "k_lo": 29871,
-   "k_hi": 29871,
+   "q_lo": 9810000,
+   "q_hi": 10050000,
+   "k_lo": 8616,
+   "k_hi": 8616,
    "flags": [
     "up_price_district"
    ]
   },
   {
-   "serial": "RPUNMLPKOHLGFAH88DA",
+   "serial": "RPPNMLTKKHLGFEH78DA",
    "category": "price_bundled_area_reg",
    "basis": "estimated",
-   "q_lo": 18520000,
-   "q_hi": 19040000,
-   "k_lo": 14354,
-   "k_hi": 14354,
+   "q_lo": 10730000,
+   "q_hi": 10970000,
+   "k_lo": 9029,
+   "k_hi": 9029,
    "flags": [
-    "up_price_district"
+    "up_price_city"
    ]
   },
   {
-   "serial": "RPQQMLPJOHLGFBH78DA",
+   "serial": "RPPNMLQKOHLGFAH48DA",
    "category": "both_bundled",
    "basis": "estimated",
-   "q_lo": 12510000,
-   "q_hi": 12750000,
-   "k_lo": 12982,
-   "k_hi": 13632,
+   "q_lo": 13260000,
+   "q_hi": 13500000,
+   "k_lo": 14233,
+   "k_hi": 14503,
    "flags": [
-    "up_area_district",
-    "up_price_district"
+    "up_area_city",
+    "up_price_city"
    ]
   },
   {
-   "serial": "RPUOMLRLNHLGFBH66DA",
+   "serial": "RPTNMLLKOHLGFDH68DA",
    "category": "both_bundled",
    "basis": "estimated",
-   "q_lo": 14270000,
-   "q_hi": 14510000,
-   "k_lo": 17734,
-   "k_hi": 18384,
+   "q_lo": 18880000,
+   "q_hi": 19180000,
+   "k_lo": 20652,
+   "k_hi": 20652,
    "flags": [
-    "up_area_district",
-    "up_price_district"
+    "up_area_capped",
+    "up_area_city",
+    "up_price_city"
    ]
   },
   {
-   "serial": "RPSOMLPJLHLGFAH38DA",
+   "serial": "RPOOMLKKOHLGFCH08DA",
    "category": "both_bundled_multi",
    "basis": "estimated",
-   "q_lo": 35920000,
-   "q_hi": 36440000,
-   "k_lo": 25333,
-   "k_hi": 26633,
+   "q_lo": 18340000,
+   "q_hi": 19060000,
+   "k_lo": 33693,
+   "k_hi": 35703,
    "flags": [
-    "up_area_district",
-    "up_price_district"
+    "up_area_city",
+    "up_price_city"
    ]
   },
   {
-   "serial": "RPRNMLPKLHLGFAH28DA",
+   "serial": "RPPSMLRLOHKGFAH09DA",
    "category": "price_split_area_none",
    "basis": "estimated",
-   "q_lo": 11580000,
-   "q_hi": 11580000,
-   "k_lo": 12215,
-   "k_hi": 12865,
+   "q_lo": 5953000,
+   "q_hi": 5953000,
+   "k_lo": 4290,
+   "k_hi": 4940,
    "flags": [
     "up_area_district"
    ]
   },
   {
-   "serial": "RPSRMLLLRHLGFAH09DA",
+   "serial": "RPPUMLOJKIKGFAH48DA",
    "category": "multi_split_total",
    "basis": "official",
-   "q_lo": 48460000,
-   "q_hi": 48460000,
-   "k_lo": 32017,
-   "k_hi": 32017,
+   "q_lo": 42780000,
+   "q_hi": 42780000,
+   "k_lo": 32922,
+   "k_hi": 32922,
    "flags": []
   },
   {
@@ -365,13 +366,13 @@
    ]
   },
   {
-   "serial": "RPUNMLKMOHLGFAH58DA",
+   "serial": "RPSPMLKKKIKGFAH97DA",
    "category": "multi_official",
    "basis": "official",
-   "q_lo": 15000000,
-   "q_hi": 15000000,
-   "k_lo": 23798,
-   "k_hi": 23798,
+   "q_lo": 78000000,
+   "q_hi": 78000000,
+   "k_lo": 50977,
+   "k_hi": 50977,
    "flags": []
   },
   {

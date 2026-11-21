@@ -78,6 +78,15 @@ def test_combine_rules():
     assert combine([P.NONE, P.RAMP_FLAT]) == P.UNKNOWN  # 互相矛盾
 
 
+def test_combine_keeps_flat_from_an_already_mixed_value():
+    # 已經是「混合含平面」的值（例如同一段寫了平面與機械）再和別的車位合併，仍然含平面
+    assert combine([P.MIXED_WITH_FLAT, P.MECHANICAL]) == P.MIXED_WITH_FLAT
+    assert combine([P.MIXED_WITH_FLAT, P.UNKNOWN]) == P.MIXED_WITH_FLAT
+    assert combine([P.MIXED_NO_FLAT, P.RAMP_FLAT]) == P.MIXED_WITH_FLAT
+    assert combine([P.MIXED_NO_FLAT, P.MECHANICAL]) == P.MIXED_NO_FLAT
+    assert parse_parking("坡道平面機械+機械") == P.MIXED_WITH_FLAT
+
+
 def test_phrase_table_is_longest_first_safe():
     # 每個片語單獨比對都得到自己的類型，不會被比它短的片語搶走
     for phrase, ptype in PHRASES:

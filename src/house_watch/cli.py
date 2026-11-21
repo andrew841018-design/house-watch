@@ -6,8 +6,13 @@
     house-watch export          重新產生網站檔（<資料夾>/export/site）
     house-watch serve [--port]  只在 127.0.0.1 提供網站檔
     house-watch doctor          檢查版本、路徑、資料庫、來源狀態、最近的執行、磁碟（遮掉本機值）
-    house-watch tick | publish [--dry-run] | schedule install|remove
-                                由 WP7b／WP7c 實作；之前回報 not yet available
+    house-watch tick            排程入口（WP7b，tick.py）：拿鎖、到期的工作、匯出、發布
+    house-watch publish [--dry-run]
+                                推到獨立的網站 repo（WP7c，publish.py）
+    house-watch schedule install [--every-hours N] | schedule remove
+                                寫／刪 launchd 的 plist，只寫檔、不載入（WP7b，ops/launchd.py）
+    house-watch deploy-local <git-ref> [--repo 資料夾]
+                                把 git ref 裝成排程用的固定版本（WP7b，ops/launchd.py）
 
 結束碼（C10）：0 成功或略過；1 部分失敗；2 設定或資料夾錯誤。
 
@@ -78,7 +83,8 @@ ENTRY_POINTS: dict[str, str] = {
     "accept": "house_watch.pipeline.scan:accept_scans",  # 提案：accept_scans(ctx)
     "tick": "house_watch.tick:run_tick",  # 提案（WP7b）：run_tick() -> int
     "publish": "house_watch.publish:run_publish",  # 提案（WP7c）：run_publish(dry_run=) -> int
-    "schedule": "house_watch.ops.launchd:run_schedule",  # 提案（WP7b）：run_schedule(action) -> int
+    "schedule": "house_watch.ops.launchd:run_schedule",  # WP7b：run_schedule(action=, every_hours=)
+    "deploy_local": "house_watch.ops.launchd:run_deploy_local",  # WP7b：run_deploy_local(ref=, repo=)
 }
 
 UPDATE_STEPS = ("doorindex", "lvr", "sources")
@@ -866,7 +872,17 @@ def cmd_publish(args: argparse.Namespace, ui: Ui) -> int:
 
 
 def cmd_schedule(args: argparse.Namespace, ui: Ui) -> int:
-    return _delegate("schedule", ui, action=args.action)
+    return _delegate("schedule", ui, action=args.action, every_hours=args.every_hours)
+
+
+def cmd_deploy_local(args: argparse.Namespace, ui: Ui) -> int:
+    return _delegate("deploy_local", ui, ref=args.ref, repo=args.repo)
+
+
+def _hours(text: str) -> int:
+    if not text.isdigit() or not 1 <= int(text) <= 24:
+        raise argparse.ArgumentTypeError("要是 1–24 的整數")
+    return int(text)
 
 
 # ---------------------------------------------------------------- 入口
@@ -917,15 +933,27 @@ def build_parser() -> argparse.ArgumentParser:
     serve.set_defaults(handler=cmd_serve)
 
     sub.add_parser("doctor", help="檢查環境與狀態").set_defaults(handler=cmd_doctor)
-    sub.add_parser("tick", help="排程入口（WP7b）").set_defaults(handler=cmd_tick)
+    sub.add_parser("tick", help="排程入口：做到期的工作、匯出、發布").set_defaults(handler=cmd_tick)
 
-    publish = sub.add_parser("publish", help="發布到網站 repo（WP7c）")
-    publish.add_argument("--dry-run", action="store_true", help="只列出要發布的檔，不推送")
+    publish = sub.add_parser("publish", help="發布到獨立的網站 repo")
+    publish.add_argument("--dry-run", action="store_true", help="只列出會做什麼，不寫入、不推送")
     publish.set_defaults(handler=cmd_publish)
 
-    schedule = sub.add_parser("schedule", help="安裝或移除 Mac 的排程（WP7b）")
+    schedule = sub.add_parser("schedule", help="寫入或刪除 Mac 的排程檔（只寫檔，不載入）")
     schedule.add_argument("action", choices=["install", "remove"])
+    schedule.add_argument(
+        "--every-hours",
+        type=_hours,
+        default=None,
+        metavar="N",
+        help="時段內每 N 小時執行一次（預設是公開設定的 probe_every_hours）",
+    )
     schedule.set_defaults(handler=cmd_schedule)
+
+    deploy = sub.add_parser("deploy-local", help="把 git ref 裝成排程用的固定版本")
+    deploy.add_argument("ref", metavar="git-ref", help="要安裝的 tag（或 commit）")
+    deploy.add_argument("--repo", default=None, metavar="資料夾", help="程式 repo（預設是目前資料夾）")
+    deploy.set_defaults(handler=cmd_deploy_local)
     return parser
 
 

@@ -16,11 +16,13 @@
 
 有效範圍＝外推範圍 ∩ 區域查詢的行政區（R1-15、R3-21、PLAN_v2 §4 第 4 項）：
 
-- drive 區域用設定裡 role 是 district 的多邊形（中壢區界）。
-- buffer 區域目前不能在設定裡宣告 district（settings.AreaConfig 的限制），所以依區域的
-  行政區名稱，從 `CLIP_EXCLUDE_FILES` 找到相鄰區的里界，從範圍裡扣掉
-  （桃園區周邊 1 公里跨進蘆竹區的那一塊）。地圖上另外畫出裁切線。
-- 點位判斷不靠這些多邊形：一筆物件的區由 locate 的決策表決定（R3-01）。
+- 每個區域都用設定裡 role 是 district 的多邊形裁切：drive 區域是中壢區界，buffer 區域是
+  桃園區界（桃園區周邊 1 公里跨進蘆竹區的那一塊因此裁掉）。地圖上另外畫出裁切線。
+  沒有 district 的區域載入時就失敗，不會悄悄用沒裁切的範圍。
+- 點位判斷：一筆物件的區由 locate 的決策表決定（R3-01）；行政區多邊形只是其中一種證據
+  （district_sides）。
+- 網站的 `geo/<區域>.geojson`（site_geojson）照契約 GEO_FEATURE_ROLES 輸出 role、name、
+  option、minutes。
 
 `metrics(x, y, area)` 的 x、y 是 TM2（EPSG:3826）公尺；經緯度用 `metrics_lonlat()`。
 """
@@ -51,9 +53,6 @@ from house_watch.geo.shapes import (
 from house_watch.models import AreaKind
 from house_watch.settings import AreaConfig, AreaOptions, PublicConfig, load_public
 
-# buffer 區域的裁切資料：行政區名稱 → 相鄰區里界檔（從範圍扣掉）。契約變更建議見回報。
-CLIP_EXCLUDE_FILES: dict[str, str] = {"桃園區": "taoyuan_neighbors.geojson"}
-
 BUFFER_QUAD_SEGS = 16  # 畫外推範圍時，四分之一圓用幾段折線
 FRACTION_DIGITS = 4  # 路段比例的小數位數
 
@@ -81,8 +80,7 @@ class AreaGeo:
     near: dict[str, BaseGeometry] = field(default_factory=dict)  # 範圍 id → 幾何
     avoid: dict[str, BaseGeometry] = field(default_factory=dict)
     names: dict[str, str] = field(default_factory=dict)  # 範圍 id → 顯示名稱
-    district: BaseGeometry | None = None  # drive：行政區多邊形
-    clip_exclude: BaseGeometry | None = None  # buffer：要扣掉的相鄰區
+    district: BaseGeometry | None = None  # 查詢的行政區多邊形（範圍裁到這裡）
     bands: dict[int, BaseGeometry] = field(default_factory=dict)  # drive：分鐘 → 一層包一層的範圍
     markers: tuple[dict[str, Any], ...] = ()  # 地圖標記（原樣的 WGS84 feature）
     near_union: BaseGeometry | None = None
@@ -225,10 +223,8 @@ class GeoContext:
         geo = self.area(area)
         if geo.kind == AreaKind.BUFFER:
             widest = self._unclipped_buffer(geo, max(geo.options.near_m_options or [0]))
-            if geo.clip_exclude is None:
-                return shapely.MultiLineString()
-            return lines_only(shapely.intersection(shapely.boundary(geo.clip_exclude), widest))
-        widest = geo.bands[max(geo.bands)]
+        else:
+            widest = geo.bands[max(geo.bands)]
         assert geo.district is not None
         return lines_only(shapely.intersection(shapely.boundary(geo.district), widest))
 
@@ -274,31 +270,29 @@ class GeoContext:
         if geo.kind == AreaKind.BUFFER:
             for role, refs in (("near", geo.near), ("avoid", geo.avoid)):
                 for ref_id, geom in refs.items():
-                    props = {"layer": "zone", "role": role, "id": ref_id, "name": geo.names[ref_id]}
-                    features.append(to_feature(geom, props))
+                    features.append(to_feature(geom, {"role": role, "name": geo.names[ref_id]}))
             for n in geo.options.near_m_options or []:
-                props = {"layer": "range", "option_key": "near_m", "option": n}
+                props = {"role": "near_band", "option": n}
                 features.append(to_feature(self.effective(area, n), props))
             avoid = geo.avoid_union
             if avoid is not None:
                 for r in geo.options.rca_m_options or []:
                     shape_r = shapely.buffer(avoid, r, quad_segs=BUFFER_QUAD_SEGS) if r else avoid
-                    props = {"layer": "avoid_range", "option_key": "rca_m", "option": r}
-                    features.append(to_feature(shape_r, props))
+                    features.append(to_feature(shape_r, {"role": "avoid_band", "option": r}))
         else:
             assert geo.district is not None
-            props = {"layer": "district", "name": "、".join(geo.districts)}
+            props = {"role": "district", "name": "、".join(geo.districts)}
             features.append(to_feature(geo.district, props))
             for m in geo.options.drive_min_options or []:
-                props = {"layer": "range", "option_key": "drive_min", "option": m}
+                props = {"role": "drive", "minutes": m}
                 features.append(to_feature(self.effective(area, m), props))
         line = self.clip_line(area)
         if not line.is_empty:
             note = f"範圍超出{'、'.join(geo.districts)}的部分已裁掉（只查詢這些行政區）"
-            features.append(to_feature(line, {"layer": "clip_line", "note": note}))
+            features.append(to_feature(line, {"role": "clip", "name": note}))
         for marker in geo.markers:
             name = (marker.get("properties") or {}).get("name")
-            props = {"layer": "marker", "name": str(name) if name else ""}
+            props = {"role": "marker", "name": str(name) if name else ""}
             features.append(
                 {"type": "Feature", "properties": props, "geometry": marker["geometry"]}
             )
@@ -330,11 +324,8 @@ def _in_buffer(row: RawMetrics, near_m: int, rca_m: int, geo: AreaGeo) -> bool:
 
 
 def _clip(geom: BaseGeometry, geo: AreaGeo) -> BaseGeometry:
-    if geo.district is not None:
-        geom = shapely.intersection(geom, geo.district)
-    if geo.clip_exclude is not None:
-        geom = shapely.difference(geom, geo.clip_exclude)
-    return geom
+    assert geo.district is not None  # 載入時已保證每個區域都有 district
+    return shapely.intersection(geom, geo.district)
 
 
 # ---------------------------------------------------------------- 載入
@@ -377,10 +368,11 @@ def _load_area(area: AreaConfig, geo_dir: Path | Traversable, used: dict[str, st
             bands = nest_bands({m: union_tm2(fs) for m, fs in by_minutes.items()})
         elif ref.role == "marker":
             markers.extend(selected)
-    clip_exclude: BaseGeometry | None = None
-    if area.kind == AreaKind.BUFFER:
-        clip_exclude = _load_clip_exclude(area, geo_dir, used)
-    else:
+    if district is None:
+        raise GeoDataError(
+            f"{area.id}：沒有 role 是 district 的行政區界，無法把範圍裁到查詢的行政區"
+        )
+    if area.kind == AreaKind.DRIVE:
         missing = set(area.options.drive_min_options or []) - set(bands)
         if missing:
             raise GeoDataError(f"{area.id}：車程檔缺少 {sorted(missing)} 分鐘")
@@ -394,7 +386,6 @@ def _load_area(area: AreaConfig, geo_dir: Path | Traversable, used: dict[str, st
         avoid=avoid,
         names=names,
         district=district,
-        clip_exclude=clip_exclude,
         bands=bands,
         markers=tuple(markers),
         near_union=shapely.union_all(list(near.values())) if near else None,
@@ -402,38 +393,10 @@ def _load_area(area: AreaConfig, geo_dir: Path | Traversable, used: dict[str, st
     )
 
 
-def _load_clip_exclude(
-    area: AreaConfig, geo_dir: Path | Traversable, used: dict[str, str]
-) -> BaseGeometry:
-    keep = {d.name for d in area.districts}
-    parts: list[BaseGeometry] = []
-    for district in area.districts:
-        filename = CLIP_EXCLUDE_FILES.get(district.name)
-        if filename is None:
-            raise GeoDataError(
-                f"{area.id}：沒有 {district.name} 的裁切資料，無法把範圍裁到查詢的行政區"
-            )
-        source = geo_dir.joinpath(filename)
-        if not source.is_file():
-            raise GeoDataError(f"{area.id}：找不到裁切資料 {filename}")
-        used[filename] = _sha256(source)
-        others = [
-            feature
-            for feature in read_geojson(source)["features"]
-            if (feature.get("properties") or {}).get("district") not in keep
-        ]
-        if others:
-            parts.append(union_tm2(others))
-    if not parts:
-        raise GeoDataError(f"{area.id}：裁切資料是空的")
-    return shapely.union_all(parts)
-
-
 def _version(areas: Iterable[AreaConfig], used: dict[str, str]) -> str:
     payload = {
         "areas": [area.model_dump(mode="json") for area in areas],
         "files": dict(sorted(used.items())),
-        "clip": dict(sorted(CLIP_EXCLUDE_FILES.items())),
     }
     text = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]

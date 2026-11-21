@@ -11,7 +11,7 @@ import shapely
 from house_watch.geo import areas
 from house_watch.geo.proj import wgs84_to_tm2
 from house_watch.geo.shapes import GeoDataError, ceil_m, nest_bands
-from house_watch.models import AreaKind, Metrics
+from house_watch.models import GEO_FEATURE_ROLES, AreaKind, Metrics
 from house_watch.settings import load_public
 
 GEO_DIR = Path(areas.default_geo_dir())
@@ -82,11 +82,21 @@ def test_missing_drive_band_fails(tmp_path):
         areas.load(geo_dir)
 
 
-def test_missing_clip_data_fails(tmp_path):
+def test_missing_district_file_fails(tmp_path):
     geo_dir = _copy_geo(tmp_path)
-    (geo_dir / "taoyuan_neighbors.geojson").unlink()
+    (geo_dir / "taoyuan_district.geojson").unlink()
     with pytest.raises(GeoDataError):
         areas.load(geo_dir)
+
+
+def test_area_without_a_district_boundary_fails():
+    """沒有行政區界就不能裁切：載入時失敗，不會悄悄用沒裁切的範圍（R1-15、R3-21）。"""
+    text = (Path(areas.__file__).parents[1] / "default.toml").read_text(encoding="utf-8")
+    block = '[areas.geo.district]      # 桃園區界'
+    start = text.index(block)
+    end = text.index("[[areas]]", start)
+    with pytest.raises(GeoDataError, match="district"):
+        areas.load(config=load_public(text[:start] + text[end:]))
 
 
 # ---------------------------------------------------------------- 已知地標與距離
@@ -185,15 +195,20 @@ def test_widest_near_option_is_clipped_to_the_district(ctx):
             assert lost > 1e5  # 跨進蘆竹區的那一塊（約 0.5 km²）
         else:
             assert lost < 1.0
-        # 有效範圍只碰到查詢的行政區（R1-15、R3-21）
-        assert shapely.intersection(effective, core.clip_exclude).area < 1.0
+        # 有效範圍只在查詢的行政區裡（R1-15、R3-21）
+        assert shapely.difference(effective, core.district).area < 1.0
 
 
 def test_clip_line_is_drawn_and_noted(ctx):
     assert ctx.clip_line("taoyuan_core").length > 500
     site = ctx.site_geojson("taoyuan_core")
-    lines = [f for f in site["features"] if f["properties"]["layer"] == "clip_line"]
-    assert len(lines) == 1 and "桃園區" in lines[0]["properties"]["note"]
+    lines = [f for f in site["features"] if f["properties"]["role"] == "clip"]
+    assert len(lines) == 1 and "桃園區" in lines[0]["properties"]["name"]
+
+
+def test_theatre_is_inside_the_taoyuan_district_polygon(ctx):
+    x, y = wgs84_to_tm2(*THEATRE)
+    assert ("桃園區", True) in ctx.district_sides(x, y)
 
 
 def test_drive_ranges_stay_inside_the_district(ctx):
@@ -214,10 +229,11 @@ def test_site_geojson_lists_every_option_the_same_way(ctx):
     for area in ctx.area_ids:
         geo = ctx.area(area)
         site = ctx.site_geojson(area)
-        ranges = [f["properties"] for f in site["features"] if f["properties"]["layer"] == "range"]
+        role, key = ("near_band", "option") if geo.kind == AreaKind.BUFFER else ("drive", "minutes")
+        ranges = [f["properties"] for f in site["features"] if f["properties"]["role"] == role]
         expected = geo.options.near_m_options or geo.options.drive_min_options
-        assert [r["option"] for r in ranges] == expected
-        assert all(set(r) == {"layer", "option_key", "option"} for r in ranges)
+        assert [r[key] for r in ranges] == expected
+        assert all(set(r) == {"role", key} for r in ranges)
         text = json.dumps(site, ensure_ascii=False)
         assert not re.search(r"selected|chosen|default|profile", text, re.IGNORECASE)
 
@@ -268,6 +284,7 @@ def test_packaged_geo_files_have_no_local_paths():
     pattern = re.compile(r"/Users/|/private/|/Volumes/|/home/|/tmp/|file:|[A-Za-z]:\\\\")
     files = sorted(GEO_DIR.glob("*.geojson"))
     assert len(files) == 8
+    assert not (GEO_DIR / "taoyuan_neighbors.geojson").exists()  # 由 taoyuan_district 取代
     for path in files:
         text = path.read_text(encoding="utf-8")
         assert not pattern.search(text), path.name
@@ -279,3 +296,21 @@ def test_attribution_covers_every_geo_file():
     for path in GEO_DIR.glob("*.geojson"):
         assert f"`{path.name}`" in attribution
     assert "ODbL" in attribution and "政府資料開放授權條款" in attribution
+
+
+def test_site_geojson_follows_the_contract_roles(ctx):
+    """網站的 geo 檔照契約 GEO_FEATURE_ROLES：每個 feature 都有 role，以及那個 role 要的屬性。"""
+    for area in ctx.area_ids:
+        roles = set()
+        for feature in ctx.site_geojson(area)["features"]:
+            props = feature["properties"]
+            role = props["role"]
+            roles.add(role)
+            assert set(props) == {"role", *GEO_FEATURE_ROLES[role]}, (area, role)
+            for key in GEO_FEATURE_ROLES[role]:
+                kind = str if key == "name" else int
+                assert isinstance(props[key], kind) and not isinstance(props[key], bool)
+        expected = {"near", "avoid", "near_band", "avoid_band", "clip"}
+        if ctx.area(area).kind == AreaKind.DRIVE:
+            expected = {"district", "drive", "clip", "marker"}
+        assert roles == expected, area

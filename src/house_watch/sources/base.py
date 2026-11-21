@@ -665,16 +665,13 @@ _NO_PARKING = re.compile(r"(?:無|無車位|沒有|沒有車位|否|0個?|NO)", 
 
 
 def combine_parking(kinds: Iterable[Parking]) -> Parking:
-    """多個車位合成一個值（parse.parking.combine）：全部相同就是那個；有任一個平面是
-    「混合含平面」；有未知的就整體未知（未知的那個可能是平面）；其餘是「混合無平面」。
+    """多個車位合成一個值（parse.parking.combine）：全部相同就是那個；有任一個平面
+    （含已經是「混合含平面」的值）是「混合含平面」；有未知的就整體未知（未知的那個可能是平面）；
+    其餘是「混合無平面」。
 
-    和 parse.parking.combine 不同的兩點：「沒有車位」不算一個車位（一個都沒有就是未知）；
-    已經是「混合含平面」的值和別的合併，結果仍然是混合含平面。
+    和 parse.parking.combine 不同的一點：「沒有車位」不算一個車位（一個都沒有就是未知）。
     """
-    found = [kind for kind in kinds if kind is not Parking.NONE]
-    if Parking.MIXED_WITH_FLAT in found and len(set(found)) > 1:
-        return Parking.MIXED_WITH_FLAT
-    return combine_spaces(found)
+    return combine_spaces([kind for kind in kinds if kind is not Parking.NONE])
 
 
 def classify_parking_text(value: Any) -> Parking:

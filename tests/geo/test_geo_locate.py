@@ -263,10 +263,11 @@ def test_polygon_evidence_needs_distance_from_the_edge(ctx):
     """離區界不到 100 m 的座標不算多邊形證據（R3-01：站方座標本身有 25–50 m 誤差）。"""
     district = ctx.area("zhongli_ic").district
     edge = shapely.line_interpolate_point(shapely.boundary(district), 0.37, normalized=True)
-    assert ctx.district_sides(edge.x, edge.y) == []
+    assert [s for s in ctx.district_sides(edge.x, edge.y) if s[0] == "中壢區"] == []
     inner = shapely.Point(Z1)
-    assert ctx.district_sides(inner.x, inner.y) == [("中壢區", True)]
-    assert ctx.district_sides(*P1) == [("中壢區", False)]
+    # 桃園區的範圍也宣告了行政區界（taoyuan_district），所以兩區都會列出
+    assert ctx.district_sides(inner.x, inner.y) == [("桃園區", False), ("中壢區", True)]
+    assert ctx.district_sides(*P1) == [("桃園區", False), ("中壢區", False)]
 
 
 def test_doors_of_one_district_decide_the_coordinates(idx, ctx):
@@ -275,6 +276,7 @@ def test_doors_of_one_district_decide_the_coordinates(idx, ctx):
     assert {(e.kind, e.district) for e in decision.evidence} == {
         ("coords", "平鎮區"),
         ("polygon", "not:中壢區"),
+        ("polygon", "not:桃園區"),
     }
 
 

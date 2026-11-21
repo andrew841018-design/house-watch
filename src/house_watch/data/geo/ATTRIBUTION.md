@@ -20,18 +20,19 @@
 | `zhongli_district.geojson` | 中壢區界 | OSM relation 1526714（admin_level 7，版本 63） | ODbL 1.0 | Nominatim 的 polygon_geojson，原樣 | medium |
 | `zhongli_ic_drive.geojson` | 到內壢、中豐、中壢交流道上匝道入口的反向車程範圍：6／8／10／12 分鐘，各交流道與聯集 | Valhalla 3.9.3（FOSSGIS 公開站），路網為 2026-11-20 的 OSM | ODbL 1.0（OSM 衍生） | 反向等時線，封鎖範圍內的國道出口匝道；自由車流；未裁切。程式載入時強制一層包一層（R3-04） | medium |
 | `zhongli_ic_points.geojson` | 9 個上匝道入口點 | OSM（Overpass，osm_base 2026-11-20） | ODbL 1.0 | 地面道路 → 匝道 → 國道主線的拓撲搜尋 | medium |
-| `taoyuan_neighbors.geojson` | 和中路／藝文特區周邊相鄰的他區里界：蘆竹區（上竹、中福、富竹、新興里）、八德區（茄明里） | OSM admin_level=9 relations，Overpass osm_base 2026-11-20 | ODbL 1.0 | 里的 outer 成員 polygonize 後依區聯集。只含和周邊查詢方框相交的里，不是完整區界 | medium |
+| `taoyuan_district.geojson` | 桃園區界 | OSM relation 2665196（admin_level 7，版本 51），Overpass osm_base 2026-11-21T02:31:18Z | ODbL 1.0 | relation 的 outer 成員 polygonize，座標取到 1e-7 度 | medium |
 
-### `taoyuan_neighbors.geojson` 的用途
+### `taoyuan_district.geojson` 的用途
 
-- 只用來把 taoyuan_core 的周邊範圍裁到桃園區（R1-15、R3-21、PLAN_v2 §4 第 4 項）。
-- 周邊 1 公里的選項跨進蘆竹區的那一小塊直接扣掉，地圖上畫出裁切線並註明。
+- 把 taoyuan_core 的周邊範圍裁到桃園區（R1-15、R3-21、PLAN_v2 §4 第 4 項）：
+  周邊 1 公里的選項跨進蘆竹區的那一小塊裁掉，地圖上畫出裁切線並註明。
+- 也是定位的多邊形證據之一（離區界 100 公尺以上才算，R3-01）。
 
-用 115 年 10 月版門牌檔核對過：
+取得時的檢查：
 
-- 特區 1 公里內的 302 列蘆竹區門牌，全部落在扣掉的那塊裡。
-- 桃園區門牌落進去的只有 11 列（OSM 里界和戶政點位的小差異）。
-- 其他較小的周邊選項都沒有被裁到。
+- 單一多邊形，面積 34.374 km²；中路特區與藝文里整個在裡面；和中壢區界、蘆竹區與八德區相鄰的里沒有重疊。
+- 用 115 年 10 月版門牌檔核對：桃園區 226,994 列門牌有 226,879 列（99.95%）在多邊形內；
+  其他區的門牌落在裡面的，每區最多 185 列（OSM 區界和戶政點位在區界附近的小差異）。
 
 ## 門牌位置坐標資料（執行時下載，不隨套件散布）
 

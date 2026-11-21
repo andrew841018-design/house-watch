@@ -30,7 +30,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_every_source_has_a_daily_cap_from_the_owner_decision():
     public = load_public()
     caps = {source: config.max_requests_day for source, config in public.sources.items()}
-    assert caps["rakuya"] == 500 and caps["cthouse"] == 300
+    assert caps["rakuya"] == 650 and caps["cthouse"] == 300  # PLAN_v2 §4 第 1、6 項
     assert all(caps[s] <= 150 for s in caps if s not in ("rakuya", "cthouse"))
     for config in public.sources.values():
         assert config.max_requests_full <= config.max_requests_day

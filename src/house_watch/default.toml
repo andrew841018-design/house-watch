@@ -49,6 +49,10 @@ match = { name = "藝文里（2026-03-01 新設之里，行政界）" }
 file = "rca_restricted_area.geojson"
 role = "avoid"
 
+[areas.geo.district]      # 桃園區界：周邊範圍裁到查詢的行政區（跨進蘆竹區的那一塊裁掉）
+file = "taoyuan_district.geojson"
+role = "district"
+
 [[areas]]
 id = "zhongli_ic"
 name = "中壢交流道周邊"
@@ -72,14 +76,14 @@ file = "zhongli_ic_points.geojson"
 role = "marker"
 
 # ------------------------------------------------------------------ 來源
-# 擁有者決定（PLAN_v2 §4 第 1 項）：每天每個（來源, 區域）做一次完整掃描，
-# 各站每日上限：樂屋網 500、中信 300、其他站 150 次以內。
+# 擁有者決定（PLAN_v2 §4 第 1、6 項）：每天每個（來源, 區域）做一次完整掃描，
+# 各站每日上限：樂屋網 650、中信 300、其他站 150 次以內。
 # - max_requests_day：這個來源每天（台北日期）最多幾個請求，含 robots.txt、轉址、探測、詳細頁。
 # - max_requests_full：一次完整掃描（一個區域）最多幾個請求，超過就判無效（budget_exhausted）。
 #   依實際頁數估（tests/fixtures/sources/LIVE_CHECK.md）：桃園區中信約 108 頁、住商約 53 頁、
 #   東森約 11 頁＋批次、21 世紀約 11 頁；樂屋網桃園區 286 頁、中壢區 232 頁。
-#   樂屋網兩區合計超過每日 500：預算不夠的那一區當天不開始（先用上次頁數估），
-#   流程讓上次完整掃描較舊的區域先做，兩區輪流（要每天都掃兩區，得調高每日上限）。
+#   樂屋網兩區一次完整掃描合計約 518 頁，所以每日上限調到 650（PLAN_v2 §4 第 6 項），
+#   留給探測與詳細頁；預算不夠的那一區當天不開始（先用上次頁數估），上次完整掃描較舊的區域先做。
 # - probe_pages：每 3 小時的探測讀前幾頁；detail_cap：每一輪最多幾個詳細頁。
 # - min_total_ratio：完整掃描讀到的筆數至少是網站回報總數的這個比例才算有效（預設 0.9）。
 # - min_interval_s：同一網站兩次請求的最小間隔（秒），不能小於 3；抓取層另外保證至少 4 秒。
@@ -106,7 +110,7 @@ detail_cap = 10
 enabled = true
 publish = true
 min_interval_s = 4
-max_requests_day = 500
+max_requests_day = 650
 max_requests_full = 300
 probe_pages = 2
 detail_cap = 10

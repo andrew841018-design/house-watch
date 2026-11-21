@@ -1,5 +1,8 @@
 """Golden 案例：21 筆實價登錄真實成交（公開資料），驗證修正後的扣車位單價（R1-05、R1-19）。
 
+- 其中 10 筆依各類別的車位結構條件，從桃園市全市季檔以固定 seed 隨機抽出，不依任何價格、屋齡、
+  樓層、坪數或區域挑選（seed 記在 golden_expected.json 的 note）。
+
 - fixtures 只保留單價計算會讀的欄位；地址、樓層、完工日、備註換成佔位字或空白。
 - 涵蓋：官方拆價、車位價含在總價（面積已登記／未登記）、有價無面積、多車位、
   明細價格是 0 但主檔有總價、沒有明細、機械車位、「其他」車位、沒有車位、
@@ -118,9 +121,9 @@ def test_corrected_logic_against_known_prototype_bugs(parsed, medians):
     assert result.up.k_lo == floor
     assert "up_area_capped" in result.flags
 
-    # 5. 多車位逐位看明細：7 個車位都有官方價與面積 → 官方拆價，不用中位數
+    # 5. 多車位逐位看明細：4 個車位都有官方價與面積 → 官方拆價，不用中位數
     multi = facts[_case("multi_official")["serial"]]
-    assert multi.parking_n == 7
+    assert multi.parking_n == 4
     assert unit_price(multi, None).up.basis == UpBasis.OFFICIAL
 
     # 6. 明細價格都是 0、主檔有總價：平均分給各車位，總和不變，算官方拆價

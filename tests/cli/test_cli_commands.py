@@ -69,9 +69,11 @@ def test_export_reports_missing_parts(monkeypatch, tmp_path, capsys):
         ["publish", "--dry-run"],
         ["schedule", "install"],
         ["schedule", "remove"],
+        ["deploy-local", "v0.0.0"],
     ],
 )
-def test_later_commands_are_stubs(argv, capsys):
+def test_later_commands_are_stubs(argv, monkeypatch, tmp_path, capsys):
+    isolate(monkeypatch, tmp_path)  # 入口指到不存在的模組：回報 not yet available，結束碼 1
     assert cli.main(argv) == 1
     assert "not yet available" in capsys.readouterr().err
 
