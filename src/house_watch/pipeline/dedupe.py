@@ -412,6 +412,16 @@ def _same(out: _Facts, name: str, known: list[tuple[str, Any]], *, norm=lambda v
         out.conflict(name, known)
 
 
+def _same_all(out: _Facts, name: str, members: list[tuple[str, ListingFacts]]) -> None:
+    """每個成員都寫了才算（事後審查 P-3）：網頁拿群組的最低價（可能來自任一成員）加上這個
+    旗標判斷總價，所以旗標要對每一筆都成立；有成員沒寫就當成未知（網頁判待確認）。
+    寫了的成員彼此矛盾時照樣標成衝突（看得出是哪幾站不一致）。"""
+    known = _known(members, name)
+    _same(out, name, known)
+    if out.values.get(name) is not CONFLICT and len(known) < len(members):
+        out.values[name] = None
+
+
 def _within(out: _Facts, name: str, known: list[tuple[str, int]], tolerance: int, pick) -> None:
     if not known:
         out.values[name] = None
@@ -429,8 +439,8 @@ def group_facts(members: list[tuple[str, ListingFacts]]) -> tuple[dict[str, Any]
     _same(out, "community_name", _known(members, "community_name"), norm=normalize_name)
     _same(out, "road_text", _known(members, "road_text"), norm=normalize_road)
     _same(out, "layout", _known(members, "layout"), norm=lambda v: layout_key(v) or v)
-    _same(out, "price_excl_parking", _known(members, "price_excl_parking"))
-    _same(out, "parking_price_yuan", _known(members, "parking_price_yuan"))
+    _same_all(out, "price_excl_parking", members)
+    _same_all(out, "parking_price_yuan", members)
     _same(out, "parking_public", _known(members, "parking_public"))
     _same(out, "btype", _known(members, "btype"))
     _same(out, "floor_lo", _known(members, "floor_lo"))

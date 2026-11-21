@@ -312,3 +312,17 @@ def test_group_facts_contradiction_lists_every_value():
     ]
     values, conflicts = dedupe.group_facts(disjoint)
     assert values["built_lo"] == CONFLICT and len(conflicts["built_lo"]) == 2
+
+
+def test_price_excl_parking_must_be_known_for_every_member():
+    """事後審查 P-3：網頁用群組的最低價，加上群組的「是否含車位」判斷總價。這兩個值要對同一筆
+    刊登；有成員沒寫的話，群組當成未知（網頁判待確認），不能借別的成員的旗標。"""
+    excl_false = unit(price_excl_parking=False)
+    unknown = unit(price_excl_parking=None)
+    values, _ = dedupe.group_facts([("cthouse", excl_false), ("hbhousing", unknown)])
+    assert values["price_excl_parking"] is None
+    with_parking = unit(price_excl_parking=True, parking_price_yuan=2_000_000)
+    values, _ = dedupe.group_facts([("cthouse", with_parking), ("hbhousing", unknown)])
+    assert values["price_excl_parking"] is None and values["parking_price_yuan"] is None
+    values, _ = dedupe.group_facts([("cthouse", excl_false), ("hbhousing", unit(price_excl_parking=False))])
+    assert values["price_excl_parking"] is False
