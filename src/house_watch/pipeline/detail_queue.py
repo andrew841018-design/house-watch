@@ -20,7 +20,7 @@ from pathlib import Path
 
 from house_watch.clock import taipei_date
 from house_watch.db import transaction
-from house_watch.errors import ErrorCode
+from house_watch.errors import ErrorCode, HouseWatchError
 from house_watch.http import FetchFailed, ResponseRejected, save_failed_response
 from house_watch.models import ListingFacts
 from house_watch.parse.age import add_years
@@ -131,6 +131,13 @@ def run(
         except FetchFailed as exc:
             report.error, report.stop_source = exc.code, True
             break
+        except Exception as exc:
+            # 解析詳細頁遇到沒預料到的資料（事後審查 P-2）：這一筆算無效、留下回應，繼續下一筆。
+            # 設定類的錯誤照樣往外丟。
+            if isinstance(exc, HouseWatchError):
+                raise
+            _save(resp, failed_dir, now())
+            facts = None
         report.fetched += 1
         report.ids.append(base.source_id)
         stamp = now()

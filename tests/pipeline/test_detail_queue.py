@@ -129,3 +129,29 @@ def test_blocked_detail_stops_the_source_without_marking(conn, scope):
         )
     assert report.stop_source and report.error is not None and report.fetched == 0
     assert versions.listing(conn, "cthouse", "A").detail_fetched_at is None
+
+
+def test_an_unexpected_detail_parse_error_only_skips_that_item(conn, scope, tmp_path, monkeypatch):
+    """事後審查 P-2：解析詳細頁丟出沒預料到的例外時，這一筆算無效、回應留存，其他照做；
+    不能讓例外穿出去，害這一輪後面的來源與分群都不做。"""
+    site = FakeSite()
+    site.add(Unit(id="A"))
+    add(conn, facts("A", parking=Parking.UNKNOWN), 0)
+    clock = FakeClock(T0 + dt.timedelta(hours=1))
+
+    def boom(self, resp, base):
+        raise KeyError("unexpected detail shape")
+
+    monkeypatch.setattr(FakeAdapter, "parse_detail", boom)
+    with fetcher(conn, site, clock) as f:
+        report = detail_queue.run(
+            conn,
+            f.bind("cthouse", FAR),
+            FakeAdapter(),
+            scope=scope,
+            now=clock.now,
+            limit=5,
+            failed_dir=tmp_path / "failed",
+        )
+    assert report.invalid == 1 and report.error is None
+    assert list((tmp_path / "failed").glob("*.bin"))

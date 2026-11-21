@@ -487,3 +487,14 @@ def test_failed_responses_are_named_by_time_and_hash(tmp_path):
     old = save_failed_response(resp, tmp_path / "failed", now - dt.timedelta(days=8))
     assert prune_failed_responses(tmp_path / "failed", now) == 1
     assert path.exists() and not old.exists()
+
+
+@pytest.mark.parametrize("location", ["https://a.example:99999/x", "https://[x/", "https://a.example:abc/"])
+def test_a_malformed_redirect_is_rejected_not_a_crash(make_fetcher, clock, location):
+    """事後審查 P-2：不合法的轉址網址要變成抓取層的錯誤（FetchFailed：ResponseRejected 或
+    httpx 自己判的 SiteError），掃描接得住；不能丟 ValueError 讓整輪後面的來源與分群都跳過。"""
+    from house_watch.http import FetchFailed
+
+    handler = Recorder(clock, httpx.Response(302, headers={"location": location}))
+    with pytest.raises(FetchFailed):
+        make_fetcher(handler).fetch(get(), source="x", deadline=FAR)

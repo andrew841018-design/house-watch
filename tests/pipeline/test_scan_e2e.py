@@ -293,3 +293,18 @@ def test_time_overrun_is_reported_as_partial(env, site, monkeypatch):
     report = env.update()
     step = next(s for s in report.steps if s.name == "sources")
     assert step.status == "partial" and "時間不夠" in step.message
+
+
+def test_an_adapter_crash_fails_only_that_scan(env, site, monkeypatch):
+    """事後審查 P-2：轉接器遇到沒預料到的資料丟出例外時，這個來源本輪停止、記成失敗，
+    不能讓例外穿出去（後面的來源、分群都不做）。"""
+    import pipeline_kit
+
+    site.add(*five_units())
+
+    def boom(self, resp, q):
+        raise KeyError("unexpected card shape")
+
+    monkeypatch.setattr(pipeline_kit.FakeAdapter, "parse_list", boom)
+    env.update()
+    assert statuses(env)[-1] == ("full", "failed", "page_invalid")

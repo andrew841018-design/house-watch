@@ -301,10 +301,14 @@ def _is_tls_error(exc: BaseException) -> bool:
 
 
 def _host_of(url: str) -> str | None:
-    parts = urlsplit(url)
-    if parts.scheme != "https" or not parts.hostname or parts.username or parts.password:
-        return None
-    if parts.port not in (None, 443):
+    """網址的主機（https、沒有帳密、連接埠 443）；不合法的網址回 None（事後審查 P-2）。"""
+    try:
+        parts = urlsplit(url)
+        if parts.scheme != "https" or not parts.hostname or parts.username or parts.password:
+            return None
+        if parts.port not in (None, 443):  # 連接埠不合法時 .port 會丟 ValueError
+            return None
+    except ValueError:
         return None
     return parts.hostname.lower()
 
@@ -434,7 +438,10 @@ class Fetcher:
                 return resp
             if spec.method != "GET":
                 raise ResponseRejected(ErrorCode.PAGE_INVALID, "POST 不跟隨轉址")
-            target = urljoin(url, location)
+            try:
+                target = urljoin(url, location)
+            except ValueError:  # 例如 "https://[x/"（事後審查 P-2）
+                raise ResponseRejected(ErrorCode.PAGE_INVALID, "轉址網址不合法") from None
             if _host_of(target) not in policy.allowed_hosts:
                 raise ResponseRejected(ErrorCode.PAGE_INVALID, "轉址到白名單外的主機")
             url = target
@@ -480,6 +487,8 @@ class Fetcher:
             self._on_soft_failure(source, ErrorCode.TIMEOUT, "逾時")
         except httpx.DecodingError:
             raise ResponseRejected(ErrorCode.PAGE_INVALID, "回應無法解壓縮") from None
+        except httpx.InvalidURL:
+            raise ResponseRejected(ErrorCode.PAGE_INVALID, "網址不合法") from None
         except (httpx.TransportError, ssl.SSLError) as exc:
             if _is_tls_error(exc):
                 self._on_soft_failure(source, ErrorCode.TLS_ERROR, "TLS 錯誤")

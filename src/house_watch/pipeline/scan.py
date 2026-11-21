@@ -47,7 +47,7 @@ from typing import Any, Literal
 
 from house_watch.clock import Clock, from_iso, taipei_date, to_iso
 from house_watch.db import SCAN_ACCEPTED, SCAN_FAILED, SCAN_INVALID, SCAN_OK, transaction
-from house_watch.errors import ErrorCode
+from house_watch.errors import ErrorCode, HouseWatchError
 from house_watch.export import load_entry
 from house_watch.http import (
     DeadlineReached,
@@ -378,6 +378,12 @@ def run_scan(
         result.error_code, result.stop = exc.code, "source"
     except PageInvalid as exc:  # prepare() 或批次以外的頁面錯誤
         result.error_code = exc.code
+    except Exception as exc:
+        # 轉接器遇到沒預料到的資料（KeyError、ValidationError…）：這個來源本輪停止、記成失敗，
+        # 其他來源與分群照做（事後審查 P-2）。設定類的錯誤（ConfigError 等）照樣往外丟。
+        if isinstance(exc, HouseWatchError):
+            raise
+        result.error_code, result.stop = ErrorCode.PAGE_INVALID, "source"
     result.parsed = len(seen)
     if complete and mode == "full":
         result.status, result.error_code = _validity(
