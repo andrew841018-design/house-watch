@@ -63,6 +63,9 @@ METADATA_MAX_BYTES = 4 * 1024 * 1024
 DEFAULT_DOWNLOAD_MAX_BYTES = 256 * 1024 * 1024  # 和 default.toml 的 http.download_max_bytes 相同
 USER_AGENT = f"house-watch/{__version__}"
 MIN_INTERVAL_S = 4.0  # 同一主機兩次請求的最小間隔（IMPL_BRIEF 禮貌規則）
+# 總時間上限（事後審查 SA-3）：read timeout 只限單次讀取，伺服器慢慢送時可以讀很久。
+JSON_TOTAL_MAX_S = 120.0
+DOWNLOAD_TOTAL_MAX_S = 1200.0  # 門牌檔約 95 MB
 
 HEADER = (
     "省市縣市代碼",
@@ -533,6 +536,7 @@ class HttpFetcher:
         raise DoorIndexError(ErrorCode.DOORINDEX_INVALID, "轉址次數太多")
 
     def get_json(self, url: str, *, allowed_hosts: frozenset[str], max_bytes: int) -> Any:
+        stop_at = self._monotonic() + JSON_TOTAL_MAX_S
         with self._response(url, allowed_hosts) as response:
             ctype = response.headers.get("content-type", "").lower()
             body = bytearray()
@@ -540,6 +544,8 @@ class HttpFetcher:
                 body.extend(chunk)
                 if len(body) > max_bytes:
                     raise DoorIndexError(ErrorCode.DOORINDEX_INVALID, "詮釋資料超過大小上限")
+                if self._monotonic() > stop_at:
+                    raise DoorIndexError(ErrorCode.TIMEOUT, "詮釋資料的總時間超過上限")
         if "html" in ctype:
             raise DoorIndexError(ErrorCode.CHALLENGE, "詮釋資料回的是網頁，可能被擋")
         try:
@@ -552,6 +558,7 @@ class HttpFetcher:
     ) -> str:
         digest = hashlib.sha256()
         total = 0
+        stop_at = self._monotonic() + DOWNLOAD_TOTAL_MAX_S
         with self._response(url, allowed_hosts) as response:
             declared = response.headers.get("content-length")
             if declared and declared.isdigit() and int(declared) > max_bytes:
@@ -563,6 +570,8 @@ class HttpFetcher:
                     total += len(chunk)
                     if total > max_bytes:
                         raise DoorIndexError(ErrorCode.DOORINDEX_INVALID, "門牌檔超過大小上限")
+                    if self._monotonic() > stop_at:
+                        raise DoorIndexError(ErrorCode.TIMEOUT, "門牌檔下載的總時間超過上限")
                     digest.update(chunk)
                     fh.write(chunk)
         return digest.hexdigest()

@@ -498,3 +498,18 @@ def test_a_malformed_redirect_is_rejected_not_a_crash(make_fetcher, clock, locat
     handler = Recorder(clock, httpx.Response(302, headers={"location": location}))
     with pytest.raises(FetchFailed):
         make_fetcher(handler).fetch(get(), source="x", deadline=FAR)
+
+
+def test_a_trickling_response_is_cut_at_the_total_time_limit(make_fetcher, clock):
+    """事後審查 SA-3：伺服器每 25 秒送 1 個位元組時，每次讀取都在 read timeout 內，
+    但整個回應要有總時間上限；否則 tick 會一直拿著執行鎖，之後的整點都不跑。"""
+
+    def trickle():
+        for _ in range(1000):
+            clock.advance(25)
+            yield b"x"
+
+    handler = Recorder(clock, lambda request: httpx.Response(200, content=trickle()))
+    with pytest.raises(SiteError) as caught:
+        make_fetcher(handler).fetch(get(), source="x", deadline=FAR)
+    assert caught.value.code is ErrorCode.TIMEOUT

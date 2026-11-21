@@ -53,6 +53,10 @@ from house_watch.sources.base import FETCHED_AT_HEADER, Adapter, Blocked, Fetch,
 USER_AGENT = f"house-watch/{__version__}"
 
 MIN_HOST_INTERVAL_S = 4.0  # 擁有者決定：同一主機兩次請求至少間隔 4 秒
+# 一個回應從送出到讀完的總時間上限（事後審查 SA-3）：read timeout 只限單次讀取，
+# 伺服器慢慢送時可以讀很久，tick 會一直拿著執行鎖。下載（實價登錄季檔）給長一點。
+REQUEST_TOTAL_MAX_S = 120.0
+DOWNLOAD_TOTAL_MAX_S = 900.0
 MAX_REDIRECTS = 5
 BACKOFF_BASE = dt.timedelta(hours=24)
 BACKOFF_MAX = dt.timedelta(days=7)
@@ -465,6 +469,8 @@ class Fetcher:
         method = spec.method if url == spec.url else "GET"
         body = spec.body if method == "POST" else None
         client = self._client(source, host)
+        total_max = DOWNLOAD_TOTAL_MAX_S if spec.kind == "download" else REQUEST_TOTAL_MAX_S
+        stop_at = min(deadline, self._clock.monotonic() + total_max)
         try:
             with client.stream(
                 method, url, headers=headers, content=body, timeout=self._timeout(deadline)
@@ -481,7 +487,7 @@ class Fetcher:
                     self._on_blocked(source, code, retry_after)
                 if status >= 500:
                     self._on_soft_failure(source, ErrorCode.HTTP_5XX, f"HTTP {status}")
-                content = self._read_capped(response, limit)
+                content = self._read_capped(response, limit, stop_at)
                 final_url = str(response.url)
         except httpx.TimeoutException:
             self._on_soft_failure(source, ErrorCode.TIMEOUT, "逾時")
@@ -525,7 +531,8 @@ class Fetcher:
         connect = max(1.0, min(self._http.connect_timeout_s, remaining))
         return httpx.Timeout(connect=connect, read=read, write=read, pool=connect)
 
-    def _read_capped(self, response: httpx.Response, limit: int) -> bytes:
+    def _read_capped(self, response: httpx.Response, limit: int, stop_at: float) -> bytes:
+        """讀完回應：超過大小上限 → ResponseRejected；超過總時間（stop_at，單調時間）→ 逾時。"""
         declared = response.headers.get("content-length")
         if declared and declared.isdigit() and int(declared) > limit:
             raise ResponseRejected(ErrorCode.PAGE_INVALID, "回應超過大小上限")
@@ -535,6 +542,8 @@ class Fetcher:
             total += len(chunk)
             if total > limit:
                 raise ResponseRejected(ErrorCode.PAGE_INVALID, "回應超過大小上限")
+            if self._clock.monotonic() > stop_at:
+                raise httpx.ReadTimeout("回應的總時間超過上限")  # 照逾時處理（_send 接住）
             chunks.append(chunk)
         return b"".join(chunks)
 

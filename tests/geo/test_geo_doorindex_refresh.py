@@ -1,5 +1,6 @@
 """門牌更新：找最新一期、下載、檢查、換檔（doorindex.refresh）。用 httpx.MockTransport，不連網。"""
 
+import itertools
 import json
 
 import httpx
@@ -189,8 +190,8 @@ def test_redirect_on_same_host_waits_between_requests(data_dir):
             target: lambda r: httpx.Response(200, content=GOOD_CSV),
         }
     )
-    clock = iter([100.0, 100.0, 100.5, 104.5, 104.5, 104.5])
-    fetcher = server.fetcher(sleep=waits.append, monotonic=lambda: next(clock))
+    ticks = itertools.count()  # 每讀一次時鐘前進 0.5 秒（總時間檢查也會讀時鐘）
+    fetcher = server.fetcher(sleep=waits.append, monotonic=lambda: 100.0 + 0.5 * next(ticks))
     try:
         info = refresh(fetcher, data_dir, NOW, min_rows=MIN_ROWS)
     finally:
@@ -235,3 +236,27 @@ def test_refresh_accepts_a_plain_httpx_client(data_dir):
     with httpx.Client(transport=httpx.MockTransport(server)) as client:
         info = refresh(client, data_dir, NOW, min_rows=MIN_ROWS)
     assert info.version == "11510"
+
+
+def test_door_download_is_cut_at_the_total_time_limit(tmp_path):
+    """事後審查 SA-3：門牌檔每塊都在 read timeout 內送到、但很慢時，也要有總時間上限。"""
+    now = [0.0]
+
+    def trickle():
+        for _ in range(10_000):
+            now[0] += 25.0
+            yield b"x" * 10
+
+    transport = httpx.MockTransport(
+        lambda request: httpx.Response(200, content=trickle(), headers={"content-type": "text/csv"})
+    )
+    with httpx.Client(transport=transport) as client:
+        fetcher = HttpFetcher(client, sleep=lambda s: None, monotonic=lambda: now[0])
+        with pytest.raises(DoorIndexError) as caught:
+            fetcher.download(
+                "https://opendata.tycg.gov.tw/doors.csv",
+                tmp_path / "doors.csv",
+                allowed_hosts=frozenset({"opendata.tycg.gov.tw"}),
+                max_bytes=10**9,
+            )
+    assert caught.value.code == ErrorCode.TIMEOUT
