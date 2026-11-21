@@ -389,3 +389,12 @@ def test_deploy_local_waits_for_a_running_tick(monkeypatch, tmp_path, capsys):
         held.release()
     assert code != 0 and calls == []
     assert "執行鎖" in capsys.readouterr().err
+
+
+def test_install_refuses_publish_files_in_protected_locations(tmp_path, no_subprocess):
+    """事後審查 SA-2：發布用的網站 repo、deploy key、known_hosts 也是排程要讀寫的；
+    放在隱私保護的位置，排程每小時都會發布失敗。"""
+    base = tmp_path / "x"
+    with pytest.raises(ConfigError, match="^網站 repo在 ~/Desktop"):
+        _install(base, other_paths=[("網站 repo", base / "home" / "Desktop" / "site")])
+    assert not (base / "LaunchAgents").exists()

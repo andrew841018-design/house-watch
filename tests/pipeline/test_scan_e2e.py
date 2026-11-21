@@ -348,3 +348,25 @@ def test_long_gone_groups_drop_out_of_the_export(env, site):
     env.update()
     exported = {m.id for g in env.listings_file().groups for m in g.members}
     assert "U2" not in exported and "U1" in exported
+
+
+def test_a_probe_sighting_restarts_the_delist_count(env, site):
+    """事後審查 AT-8：探測看到也算「看到」（R1-10）。之後要再兩次有效完整掃描都沒看到才下架。
+    把 record_sighting 改成探測不更新 last_seen，這個測試會失敗。"""
+    write_settings("[sources.cthouse]\nprobe_pages = 1\n")  # 2 頁的站才會做探測
+    site.add(*five_units())
+    env.update()  # 完整掃描 1：看到 U2
+    env.clock.advance(DAY)
+    site.remove("U2")
+    env.update()  # 完整掃描 2：沒看到
+    env.clock.advance(3 * HOUR + 60)
+    site.add(Unit(id="U2", order=99))  # 排在最新，探測讀得到
+    env.update()
+    assert statuses(env)[-1][0] == "probe"
+    env.clock.advance(DAY)
+    site.remove("U2")
+    env.update()  # 完整掃描 3：沒看到
+    assert env.listing("U2")["status"] == "active", "探測之後只有一次有效完整掃描沒看到"
+    env.clock.advance(DAY)
+    env.update()  # 完整掃描 4：還是沒看到
+    assert env.listing("U2")["status"] == "gone"

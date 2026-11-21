@@ -261,11 +261,13 @@ def install_schedule(
     env: Mapping[str, str] | None = None,
     config_path: Path | None = None,
     data_dir: Path | None = None,
+    other_paths: Sequence[tuple[str, Path]] = (),
 ) -> InstallResult:
     """寫 plist；不執行 launchctl。執行檔不存在或位置不對時丟 ConfigError。
 
-    env：寫進 plist 的路徑變數（schedule_environment）。config_path、data_dir：tick 會讀寫的
-    設定檔與資料夾，只檢查隱私保護的位置（不檢查開發資料夾）。
+    env：寫進 plist 的路徑變數（schedule_environment）。config_path、data_dir、other_paths
+    （發布用的網站 repo、deploy key、known_hosts）：tick 會讀寫的檔案，只檢查隱私保護的位置
+    （不檢查開發資料夾）。
     """
     executable = layout.executable
     if not executable.is_file():
@@ -276,7 +278,7 @@ def install_schedule(
         reason = protected_location(path, dev_root=dev_root, home=home)
         if reason is not None:
             raise ConfigError(f"{what}{reason}，排程不能用")
-    for what, maybe in (("設定檔", config_path), ("資料夾", data_dir)):
+    for what, maybe in (("設定檔", config_path), ("資料夾", data_dir), *other_paths):
         if maybe is None:
             continue
         reason = protected_location(maybe, home=home)
@@ -305,6 +307,14 @@ def remove_schedule(*, agents_dir: Path, uid: int) -> tuple[bool, str]:
     existed = target.is_file()
     target.unlink(missing_ok=True)
     return existed, bootout_command(uid)
+
+
+def _publish_paths(settings: Any) -> list[tuple[str, Path]]:
+    """發布設定裡排程要讀寫的檔案（事後審查 SA-2）。"""
+    publish = settings.local.publish
+    named = (("網站 repo", publish.site_repo_dir), ("deploy key", publish.deploy_key))
+    named += (("known_hosts", publish.known_hosts),)
+    return [(what, path.expanduser()) for what, path in named if path is not None]
 
 
 def run_schedule(*, action: str, every_hours: int | None = None) -> int:
@@ -342,6 +352,7 @@ def run_schedule(*, action: str, every_hours: int | None = None) -> int:
         env=env,
         config_path=config_file if explicit or config_file.is_file() else None,
         data_dir=settings.data_dir,
+        other_paths=_publish_paths(settings),
     )
     times = "、".join(f"{h:02d}:{m:02d}" for h, m in _times_of(result.content))
     ui.say(f"{'已寫入' if result.changed else '沒有變動'}：{result.plist}")
