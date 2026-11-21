@@ -169,12 +169,11 @@ def _tree_digest(root: Path) -> str:
 
 def test_first_publish_pushes_only_manifest_files(env):
     env.export(files={"raw.html": b"<p>debug</p>"}, skip=("raw.html",))  # 清單外的檔
-    (env.site / "debug.txt").write_text("clone 裡多出來的檔\n", encoding="utf-8")
+    # clone 裡多出來的檔不再自動刪掉，而是停下來（事後審查 SA-5，見下面兩個測試）。
     result = env.publish()
     assert result.committed and result.pushed and result.reason == "first"
     expected = {".nojekyll", "app.js", "data/listings_core.json", "data/meta.json", "index.html"}
     assert env.remote_files() == expected
-    assert not (env.site / "debug.txt").exists()  # 清單外的檔從 clone 刪掉
     message = git("log", "-1", "--format=%s", "main", cwd=env.remote)
     assert re.fullmatch(r"site \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z build [0-9a-f]{16}", message)
     author = git("log", "-1", "--format=%an <%ae>|%cn <%ce>", "main", cwd=env.remote)
@@ -373,6 +372,7 @@ def test_users_global_git_config_is_ignored(env, tmp_path, monkeypatch):
         ({"deploy_key": ""}, "deploy_key"),
         ({"known_hosts": ""}, "known_hosts"),
         ({"remote": "git@example.invalid:someone-else/other.git"}, "publish.remote"),
+        ({"remote": ""}, "remote"),  # 事後審查 SA-5：remote 必填，用來確認推的是網站 repo
     ],
 )
 def test_configuration_errors_exit_2(env, change, message):
@@ -382,6 +382,30 @@ def test_configuration_errors_exit_2(env, change, message):
         env.publish()
     assert caught.value.exit_code == ExitCode.CONFIG
     assert env.remote_commits() == 0
+
+
+def test_a_repo_with_other_peoples_commits_is_never_synced(env):
+    """事後審查 SA-5、P-4：site_repo_dir 指錯（例如程式 repo）時，同步會刪掉清單外的檔。
+    網站 repo 的 commit 全部是發布程式做的，才可以同步；不是就停下，不刪任何東西。"""
+    (env.site / "notes.md").write_text("別人的檔\n", encoding="utf-8")
+    git("add", "notes.md", cwd=env.site)
+    git("-c", "user.name=someone", "-c", "user.email=s@example.invalid", "commit", "-qm", "x", cwd=env.site)
+    (env.site / "draft.txt").write_text("還沒 commit\n", encoding="utf-8")
+    env.export()
+    with pytest.raises(publish.PublishError, match="不是發布程式做的") as caught:
+        env.publish()
+    assert caught.value.exit_code == ExitCode.CONFIG
+    assert (env.site / "notes.md").is_file() and (env.site / "draft.txt").is_file()
+
+
+def test_untracked_files_in_the_site_clone_stop_the_publish(env):
+    env.export()
+    assert env.publish().pushed
+    (env.site / "draft.txt").write_text("不是上一輪發布留下的\n", encoding="utf-8")
+    env.export(listings="[2]")
+    with pytest.raises(publish.PublishError, match="工作區"):
+        env.publish()
+    assert (env.site / "draft.txt").is_file()
 
 
 def test_deploy_key_must_be_private(env):

@@ -6,7 +6,7 @@
 
     [publish]
     site_repo_dir = "/絕對路徑/網站 repo 的 clone"
-    remote = "git@github.com:<帳號>/<網站 repo>.git"   # 選填：有寫就要和 clone 的 origin 相同
+    remote = "git@github.com:<帳號>/<網站 repo>.git"   # 必填：要和 clone 的 origin 相同（SA-5）
     deploy_key = "/絕對路徑/deploy_key"                # 只綁網站 repo 的 deploy key，權限 600
     known_hosts = "/絕對路徑/known_hosts"              # 核對過官方指紋的 GitHub 主機金鑰
 
@@ -108,6 +108,9 @@ def resolve_config(settings: Settings) -> PublishConfig:
     publish = settings.local.publish
     if publish.site_repo_dir is None:
         raise _config_error("settings.toml 的 [publish] 沒有 site_repo_dir")
+    if not publish.remote:
+        # 事後審查 SA-5：site_repo_dir 指錯時，靠 remote 比對擋下來，所以一定要寫。
+        raise _config_error("settings.toml 的 [publish] 沒有 remote：要用它確認推送的是網站 repo")
     missing = [name for name in ("deploy_key", "known_hosts") if getattr(publish, name) is None]
     if missing:
         raise _config_error(
@@ -283,6 +286,27 @@ def check_remote(git: Git, expected: str | None) -> None:
         raise _config_error(f"網站 repo 的 {REMOTE_NAME} 和 settings.toml 的 publish.remote 不同")
 
 
+def check_site_identity(git: Git) -> None:
+    """確認這真的是網站 repo，再同步（事後審查 SA-5、P-4）。
+
+    同步會刪掉清單外的檔；site_repo_dir 指錯（例如程式 repo）時就會刪掉別人的東西。
+    所以：每個 commit 都要是發布程式做的（作者是 AUTHOR_NAME／AUTHOR_EMAIL），
+    工作區也要乾淨（上一輪發布 commit 之後沒有別的改動或檔案）。不符合就停，不刪任何東西。
+    """
+    has_head = git.run("rev-parse", "--verify", "-q", "HEAD^{commit}", check=False).returncode == 0
+    if has_head:
+        authors = git.run("log", "--format=%an <%ae>", "HEAD").stdout.decode().splitlines()
+        if any(line and line != f"{AUTHOR_NAME} <{AUTHOR_EMAIL}>" for line in authors):
+            raise _config_error(
+                "網站 repo 裡有不是發布程式做的 commit：site_repo_dir 可能指錯了，沒有同步任何檔案"
+            )
+    status = git.run("status", "--porcelain", "--untracked-files=all").stdout.decode()
+    if status.strip():
+        raise _config_error(
+            "網站 repo 的工作區有別的改動或檔案：先確認 site_repo_dir，或清乾淨後再發布"
+        )
+
+
 def pending_commits(git: Git, state: RepoState) -> int:
     """HEAD 有幾個 commit 還不在 origin 的追蹤分支上（沒有追蹤分支時，全部都算）。"""
     if git.run("rev-parse", "--verify", "-q", "HEAD^{commit}", check=False).returncode != 0:
@@ -440,6 +464,7 @@ def _sync_worktree(site: Path, files: ExportFiles, plan: Plan) -> None:
         here = Path(dirpath)
         if here == site:
             dirnames[:] = [d for d in dirnames if d != ".git"]
+            filenames = [f for f in filenames if f != ".git"]  # worktree 的 .git 是檔案（P-13）
         for name in list(dirnames):
             if (here / name).is_symlink():  # 不跟著連結走出 clone
                 (here / name).unlink()
@@ -592,6 +617,7 @@ def publish_site(
     try:
         state = read_repo(git, config.site_dir)
         check_remote(git, config.remote)
+        check_site_identity(git)
         files = read_export(data, state.object_format)
         plan = decide(state, files, published_meta(git, state), now)
         pending = pending_commits(git, state)
