@@ -40,6 +40,7 @@ from typing import Any
 from urllib.parse import urljoin, urlsplit
 
 import httpx
+from filelock import Timeout
 
 from house_watch import __version__
 from house_watch.clock import Clock, SystemClock, from_iso, taipei_date, to_iso
@@ -456,6 +457,26 @@ class Fetcher:
     ) -> Resp:
         host = _host_of(url)
         assert host is not None
+        # 同一主機的跨程序鎖（修完再審 F1-1）：另一個資料夾的請求還在進行時，要等它讀完。
+        lock = self.ledger.host_lock(host)
+        try:
+            lock.acquire(timeout=max(0.0, deadline - self._clock.monotonic()))
+        except Timeout:
+            raise DeadlineReached(ErrorCode.TIMEOUT, "等同一主機的另一個請求逾時") from None
+        try:
+            return self._send_locked(spec, url, source, policy, deadline, host)
+        finally:
+            lock.release()
+
+    def _send_locked(
+        self,
+        spec: RequestSpec,
+        url: str,
+        source: str,
+        policy: SourcePolicy,
+        deadline: float,
+        host: str,
+    ) -> Resp:
         self._check_budget(source, policy)
         self._wait_for_host(host, policy, deadline)
         self._count_request(source)

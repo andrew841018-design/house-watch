@@ -21,6 +21,7 @@
 import datetime as dt
 import json
 import os
+import re
 import stat
 import sys
 import tempfile
@@ -109,6 +110,15 @@ class FetchLedger:
         except (OSError, ValueError):
             return {}
         return data if isinstance(data, dict) else {}
+
+    def host_lock(self, host: str) -> FileLock:
+        """同一主機的跨程序鎖（修完再審 F1-1）。從「讀最後請求時間 → 等間隔 → 送出 → 讀完 →
+        記下時間」整段都拿著，兩個資料夾同時跑時才守得住 4 秒間隔。"""
+        if not self._checked:
+            _check_folder(self.path.parent)
+            self._checked = True
+        safe = re.sub(r"[^a-z0-9.-]", "_", host.lower())
+        return FileLock(str(self.path.parent / f"host-{safe}.lock"))
 
     def requests_on(self, source: str, day: dt.date) -> int:
         with self._open(write=False) as data:
