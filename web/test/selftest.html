@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="zh-Hant-TW" data-page="selftest">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: https://tile.openstreetmap.org; connect-src 'self'; base-uri 'none'; form-action 'none'">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>規則自我測試</title>
+<link rel="stylesheet" href="../style.css">
+<script type="module" src="../app.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <h1>規則自我測試</h1>
+  <p class="small">在瀏覽器裡跑 <code>rules_cases.json</code> 的全部案例（和 <code>node --test</code> 用同一份），另外加上由案例推出的 NaN、Infinity 缺值案例。這一頁只在本機用，不會發布。</p>
+</header>
+<main id="selftest" class="selftest"><p>執行中…</p></main>
+</body>
+</html>
