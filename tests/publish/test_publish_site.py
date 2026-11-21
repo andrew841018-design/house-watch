@@ -398,14 +398,18 @@ def test_a_repo_with_other_peoples_commits_is_never_synced(env):
     assert (env.site / "notes.md").is_file() and (env.site / "draft.txt").is_file()
 
 
-def test_untracked_files_in_the_site_clone_stop_the_publish(env):
+def test_strays_in_a_verified_site_clone_are_cleaned_before_sync(env):
+    """修完再審 F1-4：作者與 remote 都確認是網站 repo 之後，工作區多出來的檔（Finder 的
+    .DS_Store、上一輪中途斷掉留下的改動）先還原到上一次發布的狀態再同步；不能永遠停在這裡。"""
     env.export()
     assert env.publish().pushed
-    (env.site / "draft.txt").write_text("不是上一輪發布留下的\n", encoding="utf-8")
+    (env.site / ".DS_Store").write_bytes(b"\0")
+    (env.site / "index.html").write_text("上一輪中途斷掉留下的改動\n", encoding="utf-8")
     env.export(listings="[2]")
-    with pytest.raises(publish.PublishError, match="工作區"):
-        env.publish()
-    assert (env.site / "draft.txt").is_file()
+    result = env.publish()
+    assert result.committed and result.pushed
+    assert not (env.site / ".DS_Store").exists()
+    assert ".DS_Store" not in env.remote_files()
 
 
 def test_deploy_key_must_be_private(env):

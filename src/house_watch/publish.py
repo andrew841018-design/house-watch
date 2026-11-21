@@ -286,12 +286,12 @@ def check_remote(git: Git, expected: str | None) -> None:
         raise _config_error(f"網站 repo 的 {REMOTE_NAME} 和 settings.toml 的 publish.remote 不同")
 
 
-def check_site_identity(git: Git) -> None:
-    """確認這真的是網站 repo，再同步（事後審查 SA-5、P-4）。
+def check_site_identity(git: Git) -> bool:
+    """確認這真的是網站 repo，再同步（事後審查 SA-5、P-4；修完再審 F1-4）。回傳有沒有 HEAD。
 
     同步會刪掉清單外的檔；site_repo_dir 指錯（例如程式 repo）時就會刪掉別人的東西。
-    所以：每個 commit 都要是發布程式做的（作者是 AUTHOR_NAME／AUTHOR_EMAIL），
-    工作區也要乾淨（上一輪發布 commit 之後沒有別的改動或檔案）。不符合就停，不刪任何東西。
+    所以每個 commit 都要是發布程式做的（作者是 AUTHOR_NAME／AUTHOR_EMAIL），不是就停，
+    不刪任何東西。還沒有 commit 的 clone 認不出身分，工作區要是空的（不乾淨就停）。
     """
     has_head = git.run("rev-parse", "--verify", "-q", "HEAD^{commit}", check=False).returncode == 0
     if has_head:
@@ -300,11 +300,22 @@ def check_site_identity(git: Git) -> None:
             raise _config_error(
                 "網站 repo 裡有不是發布程式做的 commit：site_repo_dir 可能指錯了，沒有同步任何檔案"
             )
+        return True
     status = git.run("status", "--porcelain", "--untracked-files=all").stdout.decode()
     if status.strip():
         raise _config_error(
-            "網站 repo 的工作區有別的改動或檔案：先確認 site_repo_dir，或清乾淨後再發布"
+            "網站 repo 還沒有 commit、工作區卻有檔案：先確認 site_repo_dir，或清乾淨後再發布"
         )
+    return False
+
+
+def restore_worktree(git: Git) -> None:
+    """身分確認過的網站 clone：工作區還原成上一次發布的 commit（修完再審 F1-4）。
+
+    Finder 的 .DS_Store、上一輪同步到一半中斷留下的改動，都不能讓發布永遠停住。
+    """
+    git.run("reset", "-q", "--hard", "HEAD")
+    git.run("clean", "-fdq")
 
 
 def pending_commits(git: Git, state: RepoState) -> int:
@@ -617,7 +628,8 @@ def publish_site(
     try:
         state = read_repo(git, config.site_dir)
         check_remote(git, config.remote)
-        check_site_identity(git)
+        if check_site_identity(git) and not dry_run:
+            restore_worktree(git)
         files = read_export(data, state.object_format)
         plan = decide(state, files, published_meta(git, state), now)
         pending = pending_commits(git, state)
