@@ -121,7 +121,21 @@ class Scope(_Strict):
 
 
 class GeoRef(_Strict):
-    """區域用到的一個 geo 檔。feature 依屬性挑選（match），不依順序（R1-29）。"""
+    """區域用到的一個 geo 檔。feature 依屬性挑選（match），不依順序（R1-29）。
+
+    role 的意思：
+    - near：buffer 區域的目標範圍（算周邊距離）。
+    - avoid：buffer 區域要避開的範圍（算避開距離）。
+    - district：查詢的行政區界。drive 區域一定要有一個；buffer 區域可以有一個（選填）。
+      有效範圍＝外推範圍 ∩ 這個多邊形（R1-15、R3-21）。buffer 區域沒寫時，
+      由 geo/areas.py 的裁切資料扣掉相鄰區（過渡做法，等區界檔補進套件後拿掉）。
+    - drive：drive 區域的車程檔；band_property 是分鐘數所在的屬性。
+    - marker：只畫在地圖上的標記。
+
+    契約 C7 補充（定義在 geo，不在這裡）：門牌下載用 geo/doorindex.py 的 `HttpFetcher`
+    （不受 C6 頁面 5 MiB 上限的限制，上限是 `[http] download_max_bytes`），
+    `IndexInfo` 是 `doorindex.refresh()` 的回傳值；定位證據是 geo/locate.py 的 `LocEvidence`。
+    """
 
     file: Annotated[str, StringConstraints(pattern=r"^[a-z0-9_]+\.geojson$")]
     role: GeoRole
@@ -189,9 +203,10 @@ class AreaConfig(_Strict):
         roles = [ref.role for ref in self.geo.values()]
         options, scope = self.options, self.scope
         if self.kind == AreaKind.BUFFER:
-            allowed = {"near", "avoid", "marker"}
+            allowed = {"near", "avoid", "marker", "district"}
             ok = (
                 "near" in roles
+                and roles.count("district") <= 1
                 and options.near_m_options is not None
                 and options.drive_min_options is None
                 and ("avoid" in roles) == (options.rca_m_options is not None)
@@ -218,15 +233,37 @@ class AreaConfig(_Strict):
         return self
 
 
+TotalRatio = Annotated[float, Field(gt=0, le=1)]
+
+
 class SourceConfig(_Strict):
-    """一個來源的抓取參數。"""
+    """一個來源的抓取參數（PLAN_v2 §4 第 1 項：每天每個（來源, 區域）一次完整掃描）。
+
+    - min_interval_s：同一網站兩次請求的最小間隔；抓取層另外保證至少 4 秒。
+    - max_requests_day：這個來源每天（台北日期）最多送幾個請求，含 robots.txt、轉址、
+      探測、詳細頁；由抓取層執行（http.daily_cap_of）。
+    - max_requests_full：一次完整掃描（一個（來源, 區域））最多用幾個請求；超過就判無效
+      （budget_exhausted）。不能大於 max_requests_day。
+    - probe_pages：探測讀前幾頁（r4 §3.4 的 K）。
+    - detail_cap：每一輪最多抓幾個詳細頁。
+    - min_total_ratio：有回報總數的站，完整掃描去重後的筆數至少要是總數的這個比例
+      才算有效（r4 §3.4 第 3 條，預設九成，每站可調）。
+    """
 
     enabled: bool
     publish: bool
     min_interval_s: float = Field(ge=3)  # 同一網站兩次請求至少間隔 3 秒（DESIGN 決策 1）
+    max_requests_day: PosInt
     max_requests_full: PosInt
     probe_pages: PosInt
     detail_cap: NonNegInt
+    min_total_ratio: TotalRatio = 0.9
+
+    @model_validator(mode="after")
+    def _check(self) -> Self:
+        if self.max_requests_full > self.max_requests_day:
+            raise ValueError("max_requests_full 不能大於 max_requests_day")
+        return self
 
 
 class SourceOverride(_Strict):
@@ -235,9 +272,11 @@ class SourceOverride(_Strict):
     enabled: bool | None = None
     publish: bool | None = None
     min_interval_s: float | None = Field(default=None, ge=3)
+    max_requests_day: PosInt | None = None
     max_requests_full: PosInt | None = None
     probe_pages: PosInt | None = None
     detail_cap: NonNegInt | None = None
+    min_total_ratio: TotalRatio | None = None
 
 
 class Schedule(_Strict):
@@ -264,11 +303,17 @@ class Schedule(_Strict):
 
 
 class HttpConfig(_Strict):
+    """抓取的 timeout 與大小上限。
+
+    User-Agent 不能設定：擁有者決定照實寫 `house-watch/<版本>`（PLAN_v2 §4 第 2 項），
+    由抓取層固定。`user_agent` 這個鍵只為了相容保留，不使用，只能是空的。
+    """
+
     connect_timeout_s: float = Field(gt=0)
     read_timeout_s: float = Field(gt=0)
     page_max_bytes: PosInt
     download_max_bytes: PosInt
-    user_agent: str | None = None  # 待擁有者決定（PLAN_v2 §4 第 2 項）
+    user_agent: None = None  # 不使用：UA 固定是 house-watch/<版本>
 
 
 class TlsConfig(_Strict):
@@ -327,6 +372,9 @@ class PublishSettings(_Strict):
 
 
 class LocalHttp(_Strict):
+    """不使用：UA 不放帳號或聯絡方式（PLAN_v2 §4 第 2 項），這個值不會送出到任何網站。
+    只為了相容舊的設定檔保留；doctor 只顯示「已設定／未設定」。"""
+
     contact: str | None = None
 
 

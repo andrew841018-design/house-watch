@@ -9,6 +9,15 @@
 - 單位：金額是整數元；`*_cp` 是 0.01 坪的整數；`*_cm2` 是 0.01 m² 的整數；距離是整數公尺。
 
 `python -m house_watch.models` 會印出匯出 JSON Schema，內容等於 `schemas/export.schema.json`。
+
+契約補充（2026-11-21 合併，WP0）：
+- `ListingFacts.district_hints` 的 kind 只有 district、zip、address 三種（HINT_KINDS）。
+- `TxFacts.parking_total_yuan`、`parking_total_cm2`：主檔那一列的車位總價與車位總面積
+  （逐位明細另外在 parkings）。
+- `UnitPrice.price_level`、`area_level`：估算車位價格、面積時用了哪一層中位數
+  （district → district_flat → city，R3-12）；只有 basis 是 estimated 才會有值。
+- `Metrics.in_district` 兩種區域都可以給（見 Metrics）。
+- 網站 `geo/<區域>.geojson` 的 feature 屬性：見 GEO_FEATURE_ROLES。
 """
 
 import datetime as dt
@@ -136,6 +145,31 @@ def rule_enum_values() -> dict[str, list[str]]:
     return {name: [member.value for member in enum] for name, enum in RULE_ENUMS.items()}
 
 
+# ListingFacts.district_hints 的 kind（R3-01）：
+# - district：站方結構化欄位的區名，例如「中壢區」。
+# - zip：郵遞區號的前 3 碼。
+# - address：地址字串開頭的區名；出現兩個不同區名時兩個都列，交給定位判斷矛盾。
+HintKind = Literal["district", "zip", "address"]
+HINT_KINDS: tuple[str, ...] = ("district", "zip", "address")
+
+# 車位中位數的分層（R3-12）：同區同類型 → 同區所有平面類 → 全市同類型。
+MedianLevel = Literal["district", "district_flat", "city"]
+
+# 網站 `geo/<區域>.geojson` 的 feature 屬性（C2 補充；WP1 產生，WP8b 的地圖依它畫）。
+# 每個 feature 一定有 role；role 決定還有哪些屬性。範圍一律已裁到查詢的行政區（R3-21）。
+# 帶選項值的三種（near_band、avoid_band、drive）只是一張公開的選項清單，不標示任何人選了哪一檔。
+GEO_FEATURE_ROLES: dict[str, tuple[str, ...]] = {
+    "near": ("name",),  # buffer：目標範圍（中路特區、藝文特區）
+    "avoid": ("name",),  # buffer：要避開的範圍（RCA 管制區）
+    "district": ("name",),  # 查詢的行政區界
+    "clip": ("name",),  # 範圍被行政區裁掉的那段線（name 是說明文字）
+    "marker": ("name",),  # 地圖標記（交流道入口等）
+    "near_band": ("option",),  # buffer：周邊距離選項的有效範圍；option＝near_m 的選項（公尺）
+    "avoid_band": ("option",),  # buffer：避開距離選項的範圍；option＝rca_m 的選項（公尺）
+    "drive": ("minutes",),  # drive：車程選項的有效範圍；minutes＝drive_min 的選項（分鐘）
+}
+
+
 # ---------------------------------------------------------------- 基本型別
 
 
@@ -231,7 +265,7 @@ class ListingFacts(_Model):
     community_name: OptText = None
     community_key: OptText = None  # 站內的社區 id
     road_text: OptText = None
-    district_hints: list[tuple[Code, Text]] = Field(default_factory=list)  # (kind, value)
+    district_hints: list[tuple[HintKind, Text]] = Field(default_factory=list)  # (kind, value)
     site_lat: OptLat = None
     site_lon: OptLon = None
     # 價格（元）
@@ -297,6 +331,8 @@ class TxFacts(_Model):
     elevator: Elevator = Elevator.UNKNOWN
     parkings: list[ParkingSpace] = Field(default_factory=list)
     parking_n: OptNonNegInt = None
+    parking_total_yuan: OptNonNegInt = None  # 主檔這一列的車位總價（元）
+    parking_total_cm2: OptNonNegInt = None  # 主檔這一列的車位移轉總面積（0.01 m²）
     total_yuan: NonNegInt
     flags: list[Code] = Field(default_factory=list)
     exclusion: OptCode = None
@@ -361,11 +397,15 @@ class ExportLoc(_Model):
 class Metrics(_Model):
     """範圍指標，不含任何門檻。
 
-    - buffer 區域：d_zhonglu_m、d_yiwen_m、d_rca_m（整數公尺，在範圍內是 0），
+    - buffer 區域：d_zhonglu_m、d_yiwen_m、d_rca_m（整數公尺，無條件進位，在範圍內是 0），
       只給門牌或網站座標精度；路段精度改給 road_frac，鍵是 "n<周邊>_r<RCA>"。
     - drive 區域：in_district、drive_min（包含這點的最小車程檔，沒有就是 null）；
       路段精度改給 road_frac，鍵是 "<分鐘>"。
-    - road_frac 的值是 0..1 的比例。
+    - in_district 兩種區域都可以給：這一筆所在的區是不是區域查詢的行政區之一。
+      drive 區域依區界多邊形；buffer 區域依定位決策的區（R3-01）。不知道是 null；
+      false 時網頁一律判不符（有效範圍只到查詢的行政區，R3-21）。
+    - road_frac 的值是 0..1 的比例。比較口徑：周邊「≤ n」算在內、RCA「> r」才算避開、
+      車程「在區內而且最小車程檔 ≤ m」（tests/test_conventions.py 固定這些口徑）。
     """
 
     d_zhonglu_m: OptNonNegInt = None
@@ -482,6 +522,7 @@ class UnitPrice(_Model):
 
     q 是扣車位後的金額（元），k 是扣車位後的面積（0.01 m²）。
     上下界的交叉配對與換算只在瀏覽器做（r4 §2.2 #4）。
+    price_level、area_level：估算車位價格、面積時用了哪一層中位數；不是估算就是 null。
     """
 
     basis: UpBasis
@@ -489,9 +530,13 @@ class UnitPrice(_Model):
     q_hi: OptNonNegInt = None
     k_lo: OptPosInt = None
     k_hi: OptPosInt = None
+    price_level: MedianLevel | None = None
+    area_level: MedianLevel | None = None
 
     @model_validator(mode="after")
     def _check(self) -> Self:
+        if self.basis != UpBasis.ESTIMATED and (self.price_level or self.area_level):
+            raise ValueError("只有 basis 是 estimated 時才有中位數的層")
         values = (self.q_lo, self.q_hi, self.k_lo, self.k_hi)
         if self.basis == UpBasis.NONE:
             if any(v is not None for v in values):

@@ -5,33 +5,49 @@
 - `parse_list`、`parse_detail` 是純函式：輸出只由回應決定。需要「抓取日」的欄位
   （屋齡換成完工日區間）用回應標頭的抓取時間，見 `response_date()`。
 
-C5 之外另加的成員（回報時列為契約補充）：
+C5 的補充成員（2026-11-21 由 WP0 併入契約）：
 - `Adapter.hosts`：轉址白名單與限速用的主機（C6「轉址白名單」需要每站一份）。
-- `Adapter.robots_urls`：每天檢查一次的 robots.txt（R2-09）。
-- `ListPage.skipped`：卡片在、但編號不合法而無法變成 ListingFacts 的張數（預設 0）。
+- `Adapter.robots_urls`：每天檢查一次的 robots.txt（R2-09）；一站可以有好幾個主機的檔。
+- `ListPage.skipped`：卡片在、但解析不出 ListingFacts 的張數（預設 0）。置頂、廣告卡與
+  同一頁重複的卡片不算 skipped，解析器直接略過。
+- `BatchAdapter`（選用）：有批次端點的站（東森）補列表缺的欄位，見下。
+- `DetailByFacts.detail_request_for(base)`（選用）：詳細頁網址要用到列表其他欄位的站。
+- `Adapter.scope_version`（選用，預設 "1"）：伺服器端條件或排序改了就改這個字串，
+  讓流程重新計算基準與下架計數（範圍版本，R1-09、R1-10）。
 
-解析小工具：WP4（`parse/*.py`）完成之前的本地替身，換成 WP4 時只要換 import。
+解析小工具：薄的包裝，實際的解析都在 WP4 的 `parse/*.py`。包裝只做三件事：
+接受網站給的任何型別（數字或字串）、看不懂一律回 None 或未知（不丟例外），
+以及少數網站寫法的前處理（例如車位的異體字、型態文字裡的非住宅字樣）。
 - 每個欄位都用「帶標籤或帶單位」的寫法解析，不取字串裡的第一個數字（R3-11）。
 - 金額一律轉成整數元並檢查合理範圍（R1-22）；面積轉成 0.01 坪的整數。
 - 屋齡一律轉成完工日區間 DateRange（r4 §3.10）。
 - 車位：結構化欄位優先，沒有才用片語表，最長的片語優先（R1-12）。
 """
 
-import calendar
 import datetime as dt
 import json
 import math
 import re
-import unicodedata
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation
 from email.utils import parsedate_to_datetime
 from typing import Any, Literal, Protocol
 
 from house_watch.clock import from_iso, taipei_date
 from house_watch.errors import ErrorCode, HouseWatchError
 from house_watch.models import BType, DateRange, ListingFacts, Parking
+from house_watch.parse.age import IMPLAUSIBLE_AGE_YEARS, built_from_age, built_from_date
+from house_watch.parse.area import find_areas
+from house_watch.parse.area import ping_to_cp as area_ping_to_cp
+from house_watch.parse.elevator import parse_btype
+from house_watch.parse.floor import parse_floor
+from house_watch.parse.floor import parse_total_floors as floor_total
+from house_watch.parse.money import sane_price, to_yuan
+from house_watch.parse.parking import combine as combine_spaces
+from house_watch.parse.parking import parse_parking
+from house_watch.parse.text import nfkc
+from house_watch.parse.text import zip3 as text_zip3
 from house_watch.settings import AreaConfig, ListingScope
 
 Mode = Literal["full", "probe"]
@@ -240,6 +256,28 @@ class Adapter(Protocol):
     def parse_detail(self, resp: Resp, base: ListingFacts) -> ListingFacts: ...
 
 
+class BatchAdapter(Adapter, Protocol):
+    """選用（C5 補充）：有批次端點的站（東森），一次補好幾筆列表缺的欄位（例如樓層）。
+
+    流程只對還缺這些欄位的刊登呼叫；parse_batch 回傳「編號 → 補好的事實」，沒補到的不放。
+    """
+
+    batch_size: int
+
+    def batch_request(self, source_ids: Sequence[str]) -> RequestSpec: ...
+
+    def parse_batch(
+        self, resp: Resp, bases: Mapping[str, ListingFacts]
+    ) -> dict[str, ListingFacts]: ...
+
+
+class DetailByFacts(Protocol):
+    """選用（C5 補充）：詳細頁網址要用到列表的其他欄位時（例如樂屋網的社區編號），
+    轉接器另外提供 `detail_request_for(base)`；流程有這個方法就優先用它。"""
+
+    def detail_request_for(self, base: ListingFacts) -> RequestSpec: ...
+
+
 # ---------------------------------------------------------------- 回應
 
 _JSON_CONSTANTS = frozenset({"NaN", "Infinity", "-Infinity"})
@@ -303,11 +341,6 @@ def clean_text(value: Any, max_len: int = 200, *, placeholders: bool = True) -> 
     return text[:max_len]
 
 
-def nfkc(text: str) -> str:
-    """只給解析用：全形數字、符號轉半形（例如「１２」「～」），不用在要保存的文字上。"""
-    return unicodedata.normalize("NFKC", text)
-
-
 _CITY_PREFIX = re.compile(r"^(?:桃園市|桃園縣|臺灣省|台灣省)")
 
 
@@ -338,11 +371,10 @@ def split_address(value: Any) -> tuple[str | None, list[str]]:
 
 
 def zip3(value: Any) -> str | None:
-    """郵遞區號取前 3 碼（有的欄位是 3＋3 的 6 碼，R3-11）。"""
+    """郵遞區號取前 3 碼（有的欄位是 3＋3 的 6 碼，R3-11）；數字也收。"""
     if value is None or isinstance(value, bool):
         return None
-    text = nfkc(str(value)).strip()
-    return text[:3] if re.fullmatch(r"\d{3}(?:\d{2,3})?", text) else None
+    return text_zip3(str(value))
 
 
 def district_hints(
@@ -363,7 +395,8 @@ def district_hints(
 
 _NUMBER = re.compile(r"[+-]?\d+(?:\.\d+)?")
 
-# 合理範圍（R1-22）：超出就當解析錯誤（例如單位從萬變成元），不寫進價格。
+# 開價的合理範圍（R1-22）：超出就當解析錯誤（例如單位從萬變成元），不寫進價格。
+# 比 parse.money.PRICE_RANGE 窄：住宅開價超過 10 億元幾乎一定是單位錯。
 PRICE_MIN_YUAN = 100_000
 PRICE_MAX_YUAN = 1_000_000_000
 TITLE_AREA_MAX_PING = 1_000
@@ -379,7 +412,7 @@ def to_decimal(value: Any) -> Decimal | None:
     if isinstance(value, float):
         return Decimal(repr(value)) if math.isfinite(value) else None
     if isinstance(value, str):
-        text = nfkc(value).strip().replace(",", "")
+        text = nfkc(value).replace(",", "")
         if not _NUMBER.fullmatch(text):
             return None
         try:
@@ -401,37 +434,39 @@ def to_float(value: Any) -> float | None:
     return None if number is None else float(number)
 
 
-def _round_int(number: Decimal) -> int:
-    return int(number.quantize(Decimal(1), rounding=ROUND_HALF_UP))
-
-
 def wan_to_yuan(value: Any) -> int | None:
-    """萬元（數字或數字字串）→ 整數元；不合理就是 None。"""
+    """萬元（數字或數字字串）→ 整數元（parse.money）；不合理就是 None。"""
     number = to_decimal(value)
     if number is None:
         return None
-    yuan = _round_int(number * 10_000)
-    return yuan if PRICE_MIN_YUAN <= yuan <= PRICE_MAX_YUAN else None
+    return sane_price(to_yuan(number, "萬"), lo=PRICE_MIN_YUAN, hi=PRICE_MAX_YUAN)
 
 
 def ping_to_cp(value: Any, *, max_ping: int = TITLE_AREA_MAX_PING) -> int | None:
-    """坪 → 0.01 坪的整數；0、負數或大得不合理（東森有 26,327 坪的髒資料）就是 None。"""
+    """坪 → 0.01 坪的整數（parse.area）；0、負數或大得不合理（東森有 26,327 坪的髒資料）是 None。"""
     number = to_decimal(value)
     if number is None or number <= 0 or number > max_ping:
         return None
-    return _round_int(number * 100)
+    return area_ping_to_cp(number)
 
 
-_PING_TEXT = re.compile(r"^約?\s*([\d,]+(?:\.\d+)?)\s*坪")
+_APPROX = re.compile(r"^約\s*")
 
 
 def ping_text_to_cp(text: Any, *, max_ping: int = TITLE_AREA_MAX_PING) -> int | None:
-    """「約16.2坪」「58.96 坪」：數字後面一定要接「坪」。"""
+    """「約16.2坪」「58.96 坪(含車位：13.70坪)」：開頭第一個帶「坪」的面積（parse.area）。
+
+    數字後面一定要接「坪」；開頭不是面積（例如只有數字、或先寫 m²）就是 None。
+    """
     cleaned = clean_text(text)
     if cleaned is None:
         return None
-    match = _PING_TEXT.match(nfkc(cleaned))
-    return ping_to_cp(match.group(1), max_ping=max_ping) if match else None
+    core = _APPROX.sub("", nfkc(cleaned))
+    found = find_areas(core)
+    if not found or found[0].start != 0 or found[0].unit != "ping":
+        return None
+    cp = found[0].hundredths
+    return cp if 0 < cp <= max_ping * 100 else None
 
 
 def site_point(lat: Any, lon: Any) -> tuple[float | None, float | None]:
@@ -442,41 +477,7 @@ def site_point(lat: Any, lon: Any) -> tuple[float | None, float | None]:
     return round(a, 7), round(b, 7)
 
 
-# ---------------------------------------------------------------- 樓層
-
-_CN_DIGITS = {"零": 0, "一": 1, "二": 2, "兩": 2, "三": 3, "四": 4, "五": 5}
-_CN_DIGITS |= {"六": 6, "七": 7, "八": 8, "九": 9}
-
-
-def cn_number(text: str) -> int | None:
-    """一到九十九的中文數字（「十五」「二十」）。"""
-    if not text:
-        return None
-    if text in _CN_DIGITS:
-        return _CN_DIGITS[text]
-    if "十" not in text or text.count("十") > 1:
-        return None
-    tens, _, ones = text.partition("十")
-    if tens and tens not in _CN_DIGITS:
-        return None
-    if ones and ones not in _CN_DIGITS:
-        return None
-    return (_CN_DIGITS[tens] if tens else 1) * 10 + (_CN_DIGITS[ones] if ones else 0)
-
-
-_TOKEN = r"(?:B\d{1,2}|\d{1,3}|[一二兩三四五六七八九十]{1,3})"
-_LEVEL = r"(?:樓|F|層)?"
-_FLOOR_RANGE = re.compile(rf"({_TOKEN}){_LEVEL}(?:[~\-至、]({_TOKEN}){_LEVEL})?")
-_UNIT_SUFFIX = re.compile(r"之(?:\d+|[一二兩三四五六七八九十]+)")
-
-
-def floor_token(token: str) -> int | None:
-    """「B1」→ -1、「15」→ 15、「十五」→ 15；0 不是有效樓層。"""
-    if token.startswith("B"):
-        number = int(token[1:])
-        return -number if number > 0 else None
-    number = int(token) if token.isdigit() else cn_number(token)
-    return number if number else None
+# ---------------------------------------------------------------- 樓層（parse.floor）
 
 
 def parse_floor_range(value: Any) -> tuple[int | None, int | None]:
@@ -484,28 +485,14 @@ def parse_floor_range(value: Any) -> tuple[int | None, int | None]:
     text = clean_text(value)
     if text is None:
         return None, None
-    text = _UNIT_SUFFIX.sub("", nfkc(text).upper().replace(" ", ""))
-    match = _FLOOR_RANGE.fullmatch(text)
-    if not match:
-        return None, None
-    lo = floor_token(match.group(1))
-    hi = floor_token(match.group(2)) if match.group(2) else lo
-    if lo is None or hi is None:
-        return None, None
-    return (lo, hi) if lo <= hi else (hi, lo)
+    info = parse_floor(text)
+    return info.lo, info.hi
 
 
 def parse_total_floors(value: Any) -> int | None:
     """總樓層：「共15樓」「13F」「13」。0 或「共0樓」代表未知（R1-30）。"""
     text = clean_text(value)
-    if text is None:
-        return None
-    text = nfkc(text).upper().replace(" ", "")
-    match = re.fullmatch(rf"共?({_TOKEN}){_LEVEL}", text)
-    if not match or match.group(1).startswith("B"):
-        return None
-    total = floor_token(match.group(1))
-    return total if total and total > 0 else None
+    return None if text is None else floor_total(text)
 
 
 def parse_floor_field(value: Any) -> tuple[int | None, int | None, int | None]:
@@ -513,41 +500,28 @@ def parse_floor_field(value: Any) -> tuple[int | None, int | None, int | None]:
     text = clean_text(value)
     if text is None:
         return None, None, None
-    unit, _, total = text.partition("/")
-    lo, hi = parse_floor_range(unit)
-    return lo, hi, parse_total_floors(total) if total else None
+    info = parse_floor(text)
+    return info.lo, info.hi, info.total
 
 
 # ---------------------------------------------------------------- 屋齡 → 完工日區間（r4 §3.10）
 
-DAYS_PER_YEAR = Decimal("365.2425")
 # 屋齡大到這裡，比較可能是民國完工年而不是屋齡，當成未知（R3-11）。
-MAX_PLAUSIBLE_AGE = 60
+MAX_PLAUSIBLE_AGE = IMPLAUSIBLE_AGE_YEARS
 
 UNKNOWN_BUILT = DateRange()
 
 
-def _minus_years(day: dt.date, years: int) -> dt.date:
-    try:
-        return day.replace(year=day.year - years)
-    except ValueError:  # 2 月 29 日 → 該年 2 月 28 日
-        return day.replace(year=day.year - years, day=28)
-
-
-def _minus_months(day: dt.date, months: int) -> dt.date:
-    index = day.year * 12 + (day.month - 1) - months
-    year, month = divmod(index, 12)
-    month += 1
-    return dt.date(year, month, min(day.day, calendar.monthrange(year, month)[1]))
+def _plausible(years: int | Decimal, ref: dt.date | None) -> bool:
+    return ref is not None and 0 <= years < MAX_PLAUSIBLE_AGE
 
 
 def built_from_floor_years(years: int, ref: dt.date | None) -> DateRange:
-    """無條件捨去的整數屋齡 n（中信）：完工日在 (R − (n+1) 年, R − n 年]。"""
-    if ref is None or years < 0 or years >= MAX_PLAUSIBLE_AGE:
+    """無條件捨去的整數屋齡 n（中信）：完工日在 (R − (n+1) 年, R − n 年]（parse.age）。"""
+    if ref is None or not _plausible(years, ref):
         return UNKNOWN_BUILT
-    hi = _minus_years(ref, years)
-    lo = _minus_years(ref, years + 1) + dt.timedelta(days=1)
-    return DateRange(lo=lo, hi=hi)
+    # 屋齡 0 年在這裡是「未滿 1 年」的已知值（呼叫端已確認），所以當成新成屋的區間。
+    return built_from_age(years, as_of=ref, integer_mode="floor", new_house=years == 0).built
 
 
 def built_from_decimal_years(
@@ -555,29 +529,21 @@ def built_from_decimal_years(
 ) -> DateRange:
     """顯示值 x（不知道是四捨五入還是截斷）：屋齡 ∈ [x − h, x + 2h)，h 是最後一位的一半。
 
-    同 WP4 `parse.age` 的 display 模式（R1-06 第 3 點：兩種進位都可能）。decimals 是網站
-    顯示的小數位數；不給就看 x 本身（住商的 33 其實是 33.0，呼叫端傳 decimals=1）。
-    以天數近似（每年 365.2425 天），往外取整，所以區間只會更寬。
+    同 parse.age 的 display 模式（R1-06 第 3 點：兩種進位都可能）。decimals 是網站顯示的
+    小數位數；不給就看 x 本身（住商的 33 其實是 33.0，呼叫端傳 decimals=1）。
     """
-    if ref is None or years < 0 or years >= MAX_PLAUSIBLE_AGE:
+    if ref is None or not _plausible(years, ref):
         return UNKNOWN_BUILT
-    if decimals is None:
-        exponent = years.as_tuple().exponent
-        decimals = -exponent if isinstance(exponent, int) and exponent < 0 else 0
-    half = Decimal(5) * Decimal(10) ** -(decimals + 1)
-    far = math.ceil((years + 2 * half) * DAYS_PER_YEAR)
-    near = max(math.floor((years - half) * DAYS_PER_YEAR), 0)
-    return DateRange(lo=ref - dt.timedelta(days=far), hi=ref - dt.timedelta(days=near))
+    if decimals is not None:
+        years = years.quantize(Decimal(1).scaleb(-decimals))
+    return built_from_age(str(years), as_of=ref, integer_mode="display").built
 
 
 def built_from_years_months(years: int, months: int, ref: dt.date | None) -> DateRange:
-    """「X年Y個月」（捨去到月）：完工日在 (R − (X年Y+1個月), R − X年Y個月]。"""
-    if ref is None or years < 0 or not 0 <= months < 12 or years >= MAX_PLAUSIBLE_AGE:
+    """「X年Y個月」（捨去到月）：完工日在 (R − (X年Y+1個月), R − X年Y個月]（parse.age）。"""
+    if ref is None or not _plausible(years, ref) or not 0 <= months < 12:
         return UNKNOWN_BUILT
-    total = years * 12 + months
-    hi = _minus_months(ref, total)
-    lo = _minus_months(ref, total + 1) + dt.timedelta(days=1)
-    return DateRange(lo=lo, hi=hi)
+    return built_from_age(f"{years}年{months}個月", as_of=ref).built
 
 
 def built_presale(ref: dt.date | None) -> DateRange:
@@ -585,24 +551,28 @@ def built_presale(ref: dt.date | None) -> DateRange:
     return UNKNOWN_BUILT if ref is None else DateRange(lo=ref, hi=None)
 
 
+_ISO_DAY = re.compile(r"\d{4}-\d{2}-\d{2}")
+
+
 def built_from_iso_date(value: Any, ref: dt.date | None = None) -> DateRange | None:
-    """完工日「1995-05-19」。不是日期、早於 1850 年或晚於抓取日一年以上就是 None。"""
+    """完工日「1995-05-19」（ISO，可以帶時間）。不是日期、早於 1850 年或晚於抓取日一年以上是 None。
+
+    只收西元的 ISO 寫法：parse.age.built_from_date 會把小於 1911 的年份當民國年，
+    「0001-01-01」這種空值的日期會變成 1912 年，所以先在這裡擋掉。
+    """
     text = clean_text(value, 40)
-    if text is None:
+    match = _ISO_DAY.match(text) if text else None
+    if match is None or int(match.group(0)[:4]) < 1850:
         return None
-    try:
-        day = dt.date.fromisoformat(text[:10])
-    except ValueError:
+    built = built_from_date(match.group(0))
+    if built.lo is None or built.lo != built.hi:
         return None
-    if day.year < 1850 or (ref is not None and day > ref + dt.timedelta(days=366)):
+    if ref is not None and built.lo > ref + dt.timedelta(days=366):
         return None
-    return DateRange(lo=day, hi=day)
+    return built
 
 
-_AGE_YM = re.compile(r"(\d{1,3})年(\d{1,2})個?月")
-_AGE_MONTHS = re.compile(r"(\d{1,2})個?月")
-_AGE_YEARS = re.compile(r"(\d{1,3}(?:\.\d+)?)年?")
-_NEW_HOUSE = re.compile(r"新成屋|全新|新屋")
+_INTEGER_AGE = re.compile(r"^(約|未滿)?(\d+)(年)?(以上|以下|以內|內)?$")
 
 
 def parse_age_text(
@@ -612,57 +582,26 @@ def parse_age_text(
     floor_years: bool = False,
     decimals: int | None = None,
 ) -> DateRange:
-    """屋齡文字 → 完工日區間（和 WP4 `parse.age.built_from_age` 同一套約定）。
+    """屋齡文字 → 完工日區間（parse.age.built_from_age，加上兩個網站寫法）。
 
-    - 「15年6個月」→ 到月的區間；「11個月」→ 0 年 11 個月。
-    - 「33年」：floor_years=True（中信）用整數捨去；否則是顯示值，decimals 是網站的小數位數。
-    - 「約10」→ 兩端各再放寬 1 年；「30年以上」→ 較早那端不設限；「5年以下」→ 較晚那端到抓取日。
-    - 0 年、空白、「--」→ 未知（r4 §3.10），除非寫了「新成屋」（當成未滿 1 年）。
-    - 「預售屋」→ 完工日不早於抓取日，晚多久不知道。
+    - 「預售屋」→ 完工日不早於抓取日，晚多久不知道（parse.age 不處理預售）。
+    - decimals：網站顯示的小數位數；整數的寫法（「33年」）其實是 33.0，先補上小數再換算。
+    - 其他寫法照 parse.age：「15年6個月」、「11個月」、「約10」、「30年以上」、「5年以下」、
+      0 年或空白是未知、「新成屋」是未滿 1 年、大得像民國年的是未知（r4 §3.10、R3-11）。
     """
     text = clean_text(value)
     if text is None or ref is None:
         return UNKNOWN_BUILT
-    text = nfkc(text).replace(" ", "")
-    if "預售" in text:
+    core = nfkc(text).replace(" ", "")
+    if "預售" in core:
         return built_presale(ref)
-    new_house = bool(_NEW_HOUSE.search(text))
-    core = _NEW_HOUSE.sub("", text).strip("()（）")
-    approx = core.startswith("約")
-    core = core.removeprefix("約")
-    open_far = core.endswith("以上")
-    open_near = core.endswith(("以下", "以內", "內"))
-    core = re.sub(r"(以上|以下|以內|內)$", "", core)
-    ym = _AGE_YM.fullmatch(core)
-    months_only = _AGE_MONTHS.fullmatch(core)
-    years_only = _AGE_YEARS.fullmatch(core)
-    if ym:
-        result = built_from_years_months(int(ym.group(1)), int(ym.group(2)), ref)
-    elif months_only:
-        result = built_from_years_months(0, int(months_only.group(1)), ref)
-    elif years_only:
-        years = Decimal(years_only.group(1))
-        if years == 0:
-            return built_from_floor_years(0, ref) if new_house else UNKNOWN_BUILT
-        if floor_years and "." not in years_only.group(1):
-            result = built_from_floor_years(int(years), ref)
-        else:
-            result = built_from_decimal_years(years, ref, decimals=decimals)
-    elif new_house and not core:
-        return built_from_floor_years(0, ref)
-    else:
-        return UNKNOWN_BUILT
-    if result == UNKNOWN_BUILT:
-        return result
-    lo, hi = result.lo, result.hi
-    if approx:
-        lo = _minus_years(lo, 1) if lo else lo
-        hi = min(_minus_years(hi, -1), ref) if hi else hi
-    if open_far:
-        lo = None
-    if open_near:
-        hi = ref
-    return DateRange(lo=lo, hi=hi)
+    if decimals and not floor_years:
+        match = _INTEGER_AGE.match(core)
+        if match is not None:
+            pre, number, unit, post = (match.group(k) or "" for k in (1, 2, 3, 4))
+            core = f"{pre}{number}.{'0' * decimals}{unit}{post}"
+    mode = "floor" if floor_years else "display"
+    return built_from_age(core, as_of=ref, integer_mode=mode).built
 
 
 def built_span_days(built: DateRange) -> int | None:
@@ -685,27 +624,19 @@ def narrow_built(base: DateRange, new: DateRange) -> DateRange:
 
 # ---------------------------------------------------------------- 建物型態
 
-_BTYPE_WORDS = {
-    "大樓": BType.BUILDING,
-    "電梯大樓": BType.BUILDING,
-    "華廈": BType.MANSION,
-    "電梯華廈": BType.MANSION,
-    "公寓": BType.WALKUP,
-    "無電梯公寓": BType.WALKUP,
-    "透天": BType.TOWNHOUSE,
-    "透天厝": BType.TOWNHOUSE,
-    "別墅": BType.TOWNHOUSE,
-    "透天/別墅": BType.TOWNHOUSE,
-}
+# 網站型態文字裡出現這些字就不是住宅（parse.elevator.parse_btype 只看大樓、華廈等字，
+# 「辦公商業大樓」會被當成大樓）。
+_NON_RESIDENTIAL = re.compile(r"店面|店鋪|辦公|商辦|廠辦|廠房|商業|工業|土地|車位|倉庫")
 
 
 def btype_from_word(value: Any) -> BType | None:
-    """網站的型態文字 → BType。認不得的文字（店面、土地…）是「其他」，空白是未知。"""
+    """網站的型態文字 → BType（parse.elevator）。認不得的文字（店面、土地…）是「其他」，空白是未知。"""
     text = clean_text(value, 40)
     if text is None:
         return None
-    text = re.sub(r"\[.*?\]|（.*?）|\(.*?\)", "", text).strip()
-    return _BTYPE_WORDS.get(text, BType.OTHER)
+    if _NON_RESIDENTIAL.search(text):
+        return BType.OTHER
+    return parse_btype(text)
 
 
 def btype_by_height(floors_total: int | None) -> BType | None:
@@ -722,70 +653,45 @@ def outside_scope_btype(f: ListingFacts, scope: ListingScope | None) -> bool:
 
 # ---------------------------------------------------------------- 車位（R1-12）
 
-_FLAT_KINDS = frozenset(
-    {
-        Parking.RAMP_FLAT,
-        Parking.GROUND_FLAT,
-        Parking.LIFT_FLAT,
-        Parking.FLAT_UNKNOWN_ACCESS,
-        Parking.MIXED_WITH_FLAT,
-    }
+# 網站寫法先換成 parse.parking 片語表認得的寫法（異體字、多一個字的寫法）。
+_PARKING_ALIASES: tuple[tuple[str, str], ...] = (
+    ("昇", "升"),
+    ("升降機平面", "升降平面"),
+    ("升降式平面", "升降平面"),
+    ("地面平面", "一樓平面"),
 )
-
-# 片語表：最長的優先；比對到的片段會被消掉，不會再被短片語比對到。
-_PARKING_PHRASES: tuple[tuple[str, Parking], ...] = (
-    ("機械升降平面", Parking.LIFT_FLAT),
-    ("升降機平面", Parking.LIFT_FLAT),
-    ("升降式平面", Parking.LIFT_FLAT),
-    ("昇降式平面", Parking.LIFT_FLAT),
-    ("升降平面", Parking.LIFT_FLAT),
-    ("昇降平面", Parking.LIFT_FLAT),
-    ("坡道平面", Parking.RAMP_FLAT),
-    ("一樓平面", Parking.GROUND_FLAT),
-    ("地面平面", Parking.GROUND_FLAT),
-    ("坡道機械", Parking.MECHANICAL),
-    ("升降機械", Parking.MECHANICAL),
-    ("昇降機械", Parking.MECHANICAL),
-    ("平移", Parking.MECHANICAL),
-    ("塔式", Parking.MECHANICAL),
-    ("機械", Parking.MECHANICAL),
-    ("升降", Parking.MECHANICAL),
-    ("昇降", Parking.MECHANICAL),
-    ("平面", Parking.FLAT_UNKNOWN_ACCESS),
-)
-_NO_PARKING = re.compile(r"(?:無|無車位|沒有|否|0個?|NO)", re.IGNORECASE)
+# 明確寫沒有車位的寫法（parse.parking 只認「無」「無車位」這類完整片語）。
+_NO_PARKING = re.compile(r"(?:無|無車位|沒有|沒有車位|否|0個?|NO)", re.IGNORECASE)
 
 
 def combine_parking(kinds: Iterable[Parking]) -> Parking:
-    """多個車位合成一個值：全部相同就是那個；有任一個平面是「混合含平面」；
-    有未知的就整體未知（未知的那個可能是平面）；其餘是「混合無平面」。"""
-    found = {k for k in kinds if k is not Parking.NONE}
-    if not found:
-        return Parking.UNKNOWN
-    if len(found) == 1:
-        return next(iter(found))
-    if found & _FLAT_KINDS:
+    """多個車位合成一個值（parse.parking.combine）：全部相同就是那個；有任一個平面是
+    「混合含平面」；有未知的就整體未知（未知的那個可能是平面）；其餘是「混合無平面」。
+
+    和 parse.parking.combine 不同的兩點：「沒有車位」不算一個車位（一個都沒有就是未知）；
+    已經是「混合含平面」的值和別的合併，結果仍然是混合含平面。
+    """
+    found = [kind for kind in kinds if kind is not Parking.NONE]
+    if Parking.MIXED_WITH_FLAT in found and len(set(found)) > 1:
         return Parking.MIXED_WITH_FLAT
-    if Parking.UNKNOWN in found:
-        return Parking.UNKNOWN
-    return Parking.MIXED_NO_FLAT
+    return combine_spaces(found)
 
 
 def classify_parking_text(value: Any) -> Parking:
-    """車位文字 → Parking。空白、「有」、「有車位」都是未知；明確寫沒有才是 none。"""
+    """車位文字 → Parking（parse.parking 片語表，最長的優先）。
+
+    空白、「有」、「有車位」都是未知；明確寫沒有才是 none。只寫「升降」不知道是升降平面
+    還是升降機械，是未知。
+    """
     text = clean_text(value, placeholders=False)
     if text is None:
         return Parking.UNKNOWN
     text = re.sub(r"\s+", "", nfkc(text))
     if _NO_PARKING.fullmatch(text):
         return Parking.NONE
-    kinds: list[Parking] = []
-    rest = text
-    for phrase, kind in _PARKING_PHRASES:
-        if phrase in rest:
-            kinds.append(kind)
-            rest = rest.replace(phrase, "|")
-    return combine_parking(kinds) if kinds else Parking.UNKNOWN
+    for old, new in _PARKING_ALIASES:
+        text = text.replace(old, new)
+    return parse_parking(text)
 
 
 # 標題或欄位寫「車位另售」之類：總價不含車位（R1-13）。標題只讀不存。

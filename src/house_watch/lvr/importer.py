@@ -35,8 +35,9 @@ from house_watch.lvr.unitprice import (
     compute_medians,
     load_medians,
     store_medians,
+    unit_price,
 )
-from house_watch.models import Location, TxFacts, canonical_json
+from house_watch.models import Location, Precision, TxFacts, canonical_json
 
 Locate = Callable[[TxFacts], Location]
 
@@ -273,3 +274,193 @@ def update(
         version=lvr_version(conn),
         as_of=lvr_as_of(conn),
     )
+
+
+# ---------------------------------------------------------------- update 的 lvr 步驟與匯出 provider（WP6 整合）
+#
+# cli 的入口 `house_watch.lvr.importer:run`（update 的 lvr 步驟）與 export 的 provider
+# `house_watch.lvr.importer:export_tx`（契約 C2 的 tx_<區域>.json）。
+# - 下載經過 C6 的 Fetcher：限速、timeout、User-Agent、轉址白名單；大小上限用
+#   `[http] download_max_bytes`（頁面的 5 MiB 不夠放 zip）。政府開放資料沒有 robots 檢查。
+# - 定位用 pipeline.locating（有門牌索引時是 WP2 的決策表，沒有就只靠「鄉鎮市區」欄）。
+#   門牌換版時，舊版定位的紀錄整批重算（relocate）。
+# - export_tx 只讀：中位數用資料庫裡同一版的結果，沒有就在記憶體裡算，不寫回。
+
+LVR_SOURCE = "lvr"
+_LEVEL_ORDER = ("district", "district_flat", "city")
+
+
+@dataclass
+class RunResult:
+    """cli 的 StepOutcome 相容物件，加上 as_of（cli 寫進 kv 的 lvr.as_of）。"""
+
+    ok: bool
+    summary: str
+    as_of: dt.date | None
+
+
+def _make_fetcher(ctx):
+    """實價登錄用的 Fetcher（測試可以換掉 FETCHER_FACTORY，注入 MockTransport 與假時鐘）。"""
+    from house_watch.http import Fetcher, SourcePolicy
+    from house_watch.lvr.fetch import ALLOWED_HOSTS
+
+    public = ctx.settings.public
+    policy = SourcePolicy(
+        allowed_hosts=ALLOWED_HOSTS, max_bytes=public.http.download_max_bytes
+    )
+    return Fetcher(
+        ctx.conn, http=public.http, tls=public.tls, policies={LVR_SOURCE: policy}, clock=ctx.clock
+    )
+
+
+FETCHER_FACTORY = _make_fetcher
+
+
+def run(ctx) -> RunResult:
+    """update 的 lvr 步驟：檢查下載頁、下載並匯入新的發布、更新中位數、門牌換版時重新定位。"""
+    from house_watch.errors import ErrorCode, HouseWatchError
+    from house_watch.http import FetchFailed
+    from house_watch.pipeline.locating import Locator
+    from house_watch.sources.base import Blocked, RequestSpec
+
+    public = ctx.settings.public
+    fetcher = FETCHER_FACTORY(ctx)
+
+    def get(url: str) -> bytes:
+        spec = RequestSpec.get(url, kind="download", max_bytes=public.http.download_max_bytes)
+        resp = fetcher.fetch(spec, source=LVR_SOURCE, deadline=ctx.deadline)
+        if resp.status != 200:
+            raise LvrError(f"下載回應 HTTP {resp.status}")
+        return resp.body
+
+    error: str | None = None
+    report: UpdateReport | None = None
+    moved = 0
+    try:
+        with Locator(ctx.settings, ctx.data.root) as locator:
+            version = locator.door_version
+            try:
+                report = update(
+                    ctx.conn,
+                    get,
+                    now=ctx.clock.now(),
+                    locate=locator.locate_tx,
+                    doorindex_version=version,
+                    months=public.scope.tx.months,
+                )
+            except (Blocked, FetchFailed) as exc:
+                error = exc.code.value
+            except (LvrError, HouseWatchError, ValueError, OSError):
+                error = ErrorCode.LVR_INVALID.value
+            moved = relocate(ctx.conn, locator.locate_tx, version)
+    finally:
+        fetcher.close()
+    as_of = lvr_as_of(ctx.conn)
+    parts = []
+    if report is not None:
+        imported = [s.release_id for s in report.imports if not s.already_imported]
+        parts.append(f"匯入 {len(imported)} 個發布" if imported else "沒有新的發布")
+    if moved:
+        parts.append(f"重新定位 {moved} 筆")
+    if error:
+        parts.append(f"錯誤 {error}")
+    return RunResult(ok=error is None, summary="；".join(parts), as_of=as_of)
+
+
+def _medians_for_export(conn: sqlite3.Connection) -> MedianTable | None:
+    version, as_of = lvr_version(conn), lvr_as_of(conn)
+    if version is None or as_of is None:
+        return None
+    stored = load_medians(conn, version)
+    if stored is not None:
+        return stored
+    return compute_medians(iter_facts(conn), version=version, as_of=as_of)
+
+
+def _levels(flags: tuple[str, ...], kind: str) -> str | None:
+    found = [level for level in _LEVEL_ORDER if f"up_{kind}_{level}" in flags]
+    return found[-1] if found else None  # 多個車位用到不同層時，標最粗的那一層
+
+
+def export_tx(ctx, area) -> list[dict]:
+    """export 的 tx_records provider：這個區域、公開範圍內的成交（C2 的 TxRecord 格式）。
+
+    公開範圍（default.toml [scope.tx]）：成交日在資料截至日往回 months 個月內、主建物不小於
+    min_main_ping（400/121 精確換算）、型態在 btypes 裡。缺值一律保留（R1-11）；
+    被排除的特殊交易（exclusion）不輸出。
+    """
+    from fractions import Fraction
+
+    from house_watch.clock import taipei_date
+    from house_watch.parse.age import add_months
+    from house_watch.parse.area import PING_M2
+    from house_watch.pipeline.locating import Locator, read_only
+
+    conn: sqlite3.Connection = ctx.conn
+    read_only(conn)
+    scope = ctx.settings.public.scope.tx
+    names = sorted({d.name for d in area.districts})
+    as_of = lvr_as_of(conn) or taipei_date(ctx.now)
+    start = add_months(as_of, -scope.months)
+    min_cm2 = Fraction(scope.min_main_ping * 100) * PING_M2
+    medians = _medians_for_export(conn)
+    marks = ", ".join("?" for _ in names)
+    rows = conn.execute(
+        "SELECT facts_json, lat, lon, precision FROM transactions"
+        f" WHERE district IN ({marks}) AND trade_date > ? ORDER BY serial",
+        (*names, start.isoformat()),
+    ).fetchall()
+    out: list[dict] = []
+    with Locator(ctx.settings, ctx.settings.data_dir, geo=ctx.cache.get("geo")) as locator:
+        ctx.cache.setdefault("geo", locator.geo)
+        for facts_json, lat, lon, precision in rows:
+            tx = TxFacts.model_validate_json(facts_json)
+            if tx.exclusion is not None:
+                continue
+            if tx.btype is not None and tx.btype not in scope.btypes:
+                continue
+            if tx.main_cm2 is not None and tx.main_cm2 < min_cm2:
+                continue
+            loc = Location(
+                lat=lat,
+                lon=lon,
+                precision=Precision(precision),
+                district=tx.district,
+            )
+            if loc.precision == Precision.ROAD and locator.idx is not None:
+                loc = locator.locate_tx(tx)  # 路段精度要 road_key 才算得出路段比例
+            floor = tx.floor_hi if tx.floor_hi is not None else tx.floor_lo
+            metrics = locator.metrics(loc, area, min_floors=floor)
+            result = unit_price(tx, medians)
+            up = result.up.model_dump(mode="json")
+            if result.up.basis.value == "estimated":
+                up["price_level"] = _levels(result.flags, "price")
+                up["area_level"] = _levels(result.flags, "area")
+            out.append(
+                {
+                    "serial": tx.serial,
+                    "date": tx.trade_date,
+                    "district": tx.district,
+                    "addr": tx.address_text,
+                    "lat": loc.lat,
+                    "lon": loc.lon,
+                    "precision": loc.precision,
+                    "btype": tx.btype,
+                    "floor_lo": tx.floor_lo,
+                    "floor_hi": tx.floor_hi,
+                    "floors_total": tx.floors_total,
+                    "main_cm2": tx.main_cm2,
+                    "built_lo": tx.built.lo,
+                    "built_hi": tx.built.hi,
+                    "elevator": tx.elevator,
+                    "parking": [
+                        {"ptype": p.ptype, "price": p.price_yuan, "area_cm2": p.area_cm2}
+                        for p in tx.parkings
+                    ],
+                    "total": tx.total_yuan,
+                    "up": up,
+                    "flags": sorted(set(tx.flags) | set(result.flags)),
+                    "metrics": metrics,
+                }
+            )
+    return out

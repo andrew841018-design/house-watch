@@ -90,6 +90,21 @@ class DataPaths:
         """網站 repo 的本機 clone（r4 §3.6）。"""
         return self.root / "site"
 
+    @property
+    def export_dir(self) -> Path:
+        """匯出成果：`export/site/`（網站本體）與 `export/manifest.json`（WP7a）。"""
+        return self.root / "export"
+
+    @property
+    def export_site_dir(self) -> Path:
+        """匯出的網站本體；`serve` 只提供這裡，publish 只發布 manifest 列出的檔。"""
+        return self.export_dir / "site"
+
+    @property
+    def export_manifest(self) -> Path:
+        """site/ 每個檔的路徑、位元組數、sha256；不在網站裡。"""
+        return self.export_dir / "manifest.json"
+
     def is_empty(self) -> bool:
         """資料夾不存在，或除了 IGNORED_WHEN_EMPTY 以外沒有任何東西。"""
         if not self.root.exists():

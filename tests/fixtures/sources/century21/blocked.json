@@ -1,0 +1,5 @@
+{
+  "status": 403,
+  "headers": {"content-type": "text/html; charset=iso-8859-1", "server": "Apache"},
+  "body": "<!DOCTYPE html><html><head><title>403 Forbidden</title></head><body><h1>Forbidden</h1><p>示意：存取被拒</p></body></html>"
+}

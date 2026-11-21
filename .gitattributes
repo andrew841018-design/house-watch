@@ -8,5 +8,8 @@
 *.zip binary
 *.sqlite binary
 
+# 第三方的檔案原樣保存，不轉換換行：Leaflet 的 CSS、JS 有 CRLF，SRI 雜湊是對原始位元組算的。
+web/vendor/** -text
+
 uv.lock linguist-generated=true
 schemas/export.schema.json linguist-generated=true

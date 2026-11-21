@@ -938,7 +938,7 @@
     },
     "Metrics": {
       "additionalProperties": false,
-      "description": "範圍指標，不含任何門檻。\n\n- buffer 區域：d_zhonglu_m、d_yiwen_m、d_rca_m（整數公尺，在範圍內是 0），\n  只給門牌或網站座標精度；路段精度改給 road_frac，鍵是 \"n<周邊>_r<RCA>\"。\n- drive 區域：in_district、drive_min（包含這點的最小車程檔，沒有就是 null）；\n  路段精度改給 road_frac，鍵是 \"<分鐘>\"。\n- road_frac 的值是 0..1 的比例。",
+      "description": "範圍指標，不含任何門檻。\n\n- buffer 區域：d_zhonglu_m、d_yiwen_m、d_rca_m（整數公尺，無條件進位，在範圍內是 0），\n  只給門牌或網站座標精度；路段精度改給 road_frac，鍵是 \"n<周邊>_r<RCA>\"。\n- drive 區域：in_district、drive_min（包含這點的最小車程檔，沒有就是 null）；\n  路段精度改給 road_frac，鍵是 \"<分鐘>\"。\n- in_district 兩種區域都可以給：這一筆所在的區是不是區域查詢的行政區之一。\n  drive 區域依區界多邊形；buffer 區域依定位決策的區（R3-01）。不知道是 null；\n  false 時網頁一律判不符（有效範圍只到查詢的行政區，R3-21）。\n- road_frac 的值是 0..1 的比例。比較口徑：周邊「≤ n」算在內、RCA「> r」才算避開、\n  車程「在區內而且最小車程檔 ≤ m」（tests/test_conventions.py 固定這些口徑）。",
       "properties": {
         "d_rca_m": {
           "anyOf": [
@@ -1443,8 +1443,25 @@
     },
     "UnitPrice": {
       "additionalProperties": false,
-      "description": "扣車位單價的分子與分母區間。\n\nq 是扣車位後的金額（元），k 是扣車位後的面積（0.01 m²）。\n上下界的交叉配對與換算只在瀏覽器做（r4 §2.2 #4）。",
+      "description": "扣車位單價的分子與分母區間。\n\nq 是扣車位後的金額（元），k 是扣車位後的面積（0.01 m²）。\n上下界的交叉配對與換算只在瀏覽器做（r4 §2.2 #4）。\nprice_level、area_level：估算車位價格、面積時用了哪一層中位數；不是估算就是 null。",
       "properties": {
+        "area_level": {
+          "anyOf": [
+            {
+              "enum": [
+                "district",
+                "district_flat",
+                "city"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Area Level"
+        },
         "basis": {
           "$ref": "#/$defs/UpBasis"
         },
@@ -1473,6 +1490,23 @@
           ],
           "default": null,
           "title": "K Lo"
+        },
+        "price_level": {
+          "anyOf": [
+            {
+              "enum": [
+                "district",
+                "district_flat",
+                "city"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Price Level"
         },
         "q_hi": {
           "anyOf": [
@@ -1506,7 +1540,9 @@
         "q_lo",
         "q_hi",
         "k_lo",
-        "k_hi"
+        "k_hi",
+        "price_level",
+        "area_level"
       ],
       "title": "UnitPrice",
       "type": "object"

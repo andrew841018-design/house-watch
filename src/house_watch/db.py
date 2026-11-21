@@ -7,6 +7,19 @@
 - 資料庫版本和程式不同就拒絕開啟；比程式新的尤其不能動（R3-13）。
 - 遷移不就地 ALTER：建新檔 → INSERT…SELECT → 檢查 → 換檔，舊檔留作備份（rebuild）。
 - 門牌索引是另一個檔案（WP2），不在這裡。
+- 抓取層（http.Fetcher）每次寫 source_state、kv 都開自己的短交易，所以呼叫 fetch() 時
+  這條連線不能正在寫入交易中（否則 RuntimeError）。流程一律是：先抓、解析，再開交易寫結果。
+
+`scans.status`（SCAN_STATUSES）：
+- running：開始了還沒結束；下一輪開始時，留下來的 running 一律改成 failed（執行中斷）。
+- ok：有效的完整掃描，或成功的探測。
+- invalid：完整掃描讀完了但沒通過有效性檢查；error_code 寫原因（count_short、parse_rate_low…）。
+- failed：抓取失敗或被擋而中斷；error_code 寫原因（blocked、http_5xx、budget_exhausted…）。
+- accepted：擁有者用 `update --accept-scan` 手動接受的 invalid（只限 count_short）。
+只有 ok 與 accepted 算成功（SCAN_OK_STATUSES）：下架計數、基準、最後成功時間都只看這兩種。
+
+`kv` 的公開鍵（值都是字串）：KV_LVR_LAST_CHECK、KV_LVR_AS_OF、KV_DOORINDEX_LAST_CHECK、
+KV_DOORINDEX_VERSION；其他鍵由各工作包自己命名，加上自己的前綴（例如 fetch.、robots.）。
 """
 
 import json
@@ -21,6 +34,19 @@ from house_watch.models import Precision
 from house_watch.paths import DataPaths
 
 SCHEMA_VERSION = 1
+
+SCAN_RUNNING = "running"
+SCAN_OK = "ok"
+SCAN_INVALID = "invalid"
+SCAN_FAILED = "failed"
+SCAN_ACCEPTED = "accepted"
+SCAN_STATUSES = (SCAN_RUNNING, SCAN_OK, SCAN_INVALID, SCAN_FAILED, SCAN_ACCEPTED)
+SCAN_OK_STATUSES = (SCAN_OK, SCAN_ACCEPTED)
+
+KV_LVR_LAST_CHECK = "lvr.last_check"  # UTC ISO 時間
+KV_LVR_AS_OF = "lvr.as_of"  # YYYY-MM-DD，實價登錄資料截至的日期
+KV_DOORINDEX_LAST_CHECK = "doorindex.last_check"  # UTC ISO 時間
+KV_DOORINDEX_VERSION = "doorindex.version"  # 門牌資料的版本文字
 
 _PRECISIONS = ", ".join(f"'{p.value}'" for p in Precision)
 
