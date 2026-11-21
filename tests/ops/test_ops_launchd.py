@@ -365,3 +365,27 @@ def test_deploy_local_rejects_unknown_refs(tmp_path, repo):
         launchd.deploy_local("no-such-tag", repo=repo, layout=layout, run=FakeUv(layout), uv="uv")
     with pytest.raises(launchd.DeployError):
         launchd.deploy_local("--all", repo=repo, layout=layout, run=FakeUv(layout), uv="uv")
+
+
+def test_deploy_local_waits_for_a_running_tick(monkeypatch, tmp_path, capsys):
+    """事後審查 SA-6：換版（uv tool install --force）和正在跑的 tick 重疊時，同一個程序會新舊
+    模組混用，甚至把「模組不見」當成「資料還沒做好」而發布空網站。deploy-local 要拿同一把
+    執行鎖，拿不到就不換。"""
+    from filelock import FileLock
+
+    from house_watch.paths import DataPaths
+
+    data = DataPaths(Path(os.environ["HOUSE_WATCH_DATA_DIR"]))
+    data.root.mkdir(parents=True)
+    monkeypatch.setenv(launchd.ENV_RUNTIME_DIR, str(tmp_path / "runtime"))
+    monkeypatch.setattr(launchd, "TCC_HOME_DIRS", ())  # pytest 的暫存資料夾可能在 ~/Desktop
+    calls = []
+    monkeypatch.setattr(launchd, "deploy_local", lambda *a, **k: calls.append(a))
+    held = FileLock(data.lock)
+    held.acquire()
+    try:
+        code = launchd.run_deploy_local(ref="v9", repo=str(tmp_path))
+    finally:
+        held.release()
+    assert code != 0 and calls == []
+    assert "執行鎖" in capsys.readouterr().err

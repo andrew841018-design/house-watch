@@ -63,6 +63,8 @@ RT=~/Library/Application\ Support/house_watch_runtime/bin/house-watch
 
 - `deploy-local` 用 `git archive` 取出那個 ref（不讀工作區），套件版本照 `uv.lock`，
   Python 用 uv 管理、裝在執行區裡（Homebrew 升級 Python 不會弄壞排程）。
+- `deploy-local` 換版時會拿資料夾的執行鎖（和 tick 同一把）：排程正在跑就拒絕，等它跑完再執行。
+  要用平常的 `HOUSE_WATCH_*` 環境變數執行它，才找得到正式的資料夾。
 - `schedule install` 只寫檔，不載入也不啟動；它會印出要執行的 `launchctl bootstrap gui/<uid> …`。
 - 排程不會帶著你終端機的環境變數。`schedule install` 會把安裝當下設了的
   `HOUSE_WATCH_CONFIG`、`HOUSE_WATCH_DATA_DIR`、`HOUSE_WATCH_LOG_DIR`、`HOUSE_WATCH_RUNTIME_DIR`

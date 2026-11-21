@@ -51,6 +51,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 import platformdirs
+from filelock import FileLock, Timeout
 
 from house_watch import paths
 from house_watch.clock import TAIPEI, SystemClock, to_iso
@@ -534,6 +535,25 @@ def deploy_local(
     return DeployResult(ref, commit, tagged, version, executable)
 
 
+def _data_run_lock() -> FileLock | None:
+    """資料夾的執行鎖（和 tick、update、export、publish 同一把；事後審查 SA-6）。
+
+    換版（uv tool install --force）和正在跑的 tick 重疊時，同一個程序會新舊模組混用。
+    只有本機設定檔存在、資料夾也存在時才拿得到；否則回 None（呼叫端提醒）。
+    """
+    from house_watch.paths import DataPaths
+    from house_watch.settings import load_settings
+
+    config_file, _explicit = paths.settings_file()
+    if not config_file.is_file():
+        return None
+    try:
+        data = DataPaths(load_settings().data_dir)
+    except HouseWatchError:
+        return None
+    return FileLock(data.lock) if data.root.is_dir() else None
+
+
 def run_deploy_local(*, ref: str, repo: str | None = None) -> int:
     """`house-watch deploy-local <git-ref>`：在開發資料夾裡執行，把那個 ref 裝成固定版本。"""
     from house_watch.cli import Ui
@@ -545,7 +565,23 @@ def run_deploy_local(*, ref: str, repo: str | None = None) -> int:
         ui.error(f"執行區{reason}；請用 {ENV_RUNTIME_DIR} 指到別的位置")
         return int(ExitCode.CONFIG)
     layout.root.mkdir(parents=True, exist_ok=True)
-    result = deploy_local(ref, repo=Path(repo) if repo else Path.cwd(), layout=layout)
+    lock = _data_run_lock()
+    if lock is None:
+        ui.error(
+            "注意：找不到本機設定檔或資料夾，沒辦法確認排程沒有在跑；"
+            "建議用平常的 HOUSE_WATCH_* 環境變數執行，或先停排程（launchctl bootout）"
+        )
+    else:
+        try:
+            lock.acquire(timeout=0)
+        except Timeout:
+            ui.error("排程或另一個指令正在執行（執行鎖拿不到）；等它跑完再換版")
+            return int(ExitCode.CONFIG)
+    try:
+        result = deploy_local(ref, repo=Path(repo) if repo else Path.cwd(), layout=layout)
+    finally:
+        if lock is not None:
+            lock.release()
     ui.say(f"已安裝 house-watch {result.version}（{result.ref} → {result.commit[:12]}）")
     ui.say(f"執行檔：{result.executable}")
     if not result.tagged:
