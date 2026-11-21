@@ -58,6 +58,7 @@ TITLE_TOLERANCE_CP = 5  # 權狀坪 ±0.05 坪（R1-08）
 SITE_MAX_M = 150.0  # 兩個建物等級座標相距 150 m 以內
 FLOORS_TOTAL_TOLERANCE = 1  # 總樓層 ±1（各站登錄不一，R2b §4）
 BUILT_TOLERANCE = dt.timedelta(days=366)  # 完工日相差一年以內
+GONE_EXPORT_DAYS = 30  # 整群下架後還匯出幾天（給「已下架」標示；CX-2：不然匯出檔只會變大）
 
 _FLAT = frozenset(
     {
@@ -528,6 +529,14 @@ def _rows(conn: sqlite3.Connection, publish: frozenset[str]) -> list[_Row]:
     return rows
 
 
+def _recent_enough(group: list[_Row], cutoff: dt.datetime) -> bool:
+    """在架的群組都匯出；整群下架的，只匯出最後下架時間在 cutoff 之後的（事後審查 CX-2）。"""
+    if any(r.active for r in group):
+        return True
+    gone_times = [r.gone_at for r in group if r.gone_at is not None]
+    return not gone_times or max(gone_times) >= cutoff
+
+
 def export_groups(ctx: Any, area: AreaConfig) -> list[dict[str, Any]]:
     """匯出 provider（export.Providers.listing_groups）：這個區域的群組，C2 的 ListingGroup 格式。
 
@@ -539,7 +548,12 @@ def export_groups(ctx: Any, area: AreaConfig) -> list[dict[str, Any]]:
     by_group: dict[int, list[_Row]] = defaultdict(list)
     for row in rows:
         by_group[row.group_id].append(row)
-    wanted = sorted(gid for gid, group in by_group.items() if any(r.area == area.id for r in group))
+    cutoff = ctx.now - dt.timedelta(days=GONE_EXPORT_DAYS)
+    wanted = sorted(
+        gid
+        for gid, group in by_group.items()
+        if any(r.area == area.id for r in group) and _recent_enough(group, cutoff)
+    )
     if not wanted:
         return []
     geo = ctx.cache.get("geo")

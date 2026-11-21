@@ -324,3 +324,27 @@ def test_a_rejected_price_jump_leaves_the_price_unknown_until_confirmed(env, sit
     env.clock.advance(3 * HOUR)
     env.update()
     assert env.listings_file().groups[0].members[0].price == 32_100_000
+
+
+def test_long_gone_groups_drop_out_of_the_export(env, site):
+    """事後審查 CX-2：下架的群組只在下架後 GONE_EXPORT_DAYS 天內匯出（給「已下架」標示用）。
+    否則匯出檔只會一直變大，最後超過大小上限，export 失敗、網站停更。"""
+    from house_watch.clock import to_iso
+    from house_watch.db import transaction
+
+    site.add(*five_units())
+    env.update()
+    site.remove("U2")
+    for _ in range(2):
+        env.clock.advance(DAY)
+        env.update()
+    assert env.listing("U2")["status"] == "gone"
+    exported = {m.id for g in env.listings_file().groups for m in g.members}
+    assert "U2" in exported, "剛下架的照樣匯出"
+    long_ago = to_iso(env.clock.now() - dt.timedelta(days=31))
+    with transaction(env.conn):
+        env.conn.execute("UPDATE listings SET gone_at = ? WHERE source_id = 'U2'", (long_ago,))
+    env.clock.advance(HOUR)
+    env.update()
+    exported = {m.id for g in env.listings_file().groups for m in g.members}
+    assert "U2" not in exported and "U1" in exported
