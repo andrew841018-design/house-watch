@@ -231,6 +231,27 @@ def sane_price(yuan: int | None, previous: int | None) -> int | None:
     return yuan
 
 
+def _repeated_jump(prior: "Version | None", raw: int | None) -> bool:
+    """這個價格上一版就看過、當時被 sane_price 擋下（事後審查 CX-1）。
+
+    第一次記到的價格要是錯的（例如少打一位數），之後正確的價格和它差 3 倍以上，會一直被擋。
+    同樣的值連續看到兩次就當成真的新價格；範圍外的值照樣不收。
+    """
+    return (
+        prior is not None
+        and prior.price_yuan is None
+        and raw is not None
+        and prior.facts.price_yuan == raw
+        and PRICE_RANGE[0] <= raw <= PRICE_RANGE[1]
+    )
+
+
+def price_rejected(conn: sqlite3.Connection, source: str, source_id: str) -> bool:
+    """目前這一版看到了價格、但被 sane_price 擋下（還沒確認）。這時現價當成未知。"""
+    current = latest(conn, source, source_id)
+    return current is not None and current.price_yuan is None and current.facts.price_yuan is not None
+
+
 def _last_price(conn: sqlite3.Connection, source: str, source_id: str) -> int | None:
     row = conn.execute(
         "SELECT price_yuan FROM listing_versions WHERE source = ? AND source_id = ?"
@@ -252,11 +273,19 @@ def append(
     prior = latest(conn, facts.source, facts.source_id)
     digest = facts.facts_hash()
     if prior is not None and prior.facts_hash == digest:
+        if _repeated_jump(prior, facts.price_yuan):  # 同樣的事實又看到一次：確認被擋下的價格
+            conn.execute(
+                "UPDATE listing_versions SET price_yuan = ?"
+                " WHERE source = ? AND source_id = ? AND valid_to IS NULL",
+                (facts.price_yuan, facts.source, facts.source_id),
+            )
         return False
     start = now
     if prior is not None and start <= prior.valid_from:
         start = prior.valid_from + dt.timedelta(seconds=1)
     price = sane_price(facts.price_yuan, _last_price(conn, facts.source, facts.source_id))
+    if price is None and _repeated_jump(prior, facts.price_yuan):
+        price = facts.price_yuan
     if prior is not None:
         conn.execute(
             "UPDATE listing_versions SET valid_to = ? WHERE source = ? AND source_id = ?"

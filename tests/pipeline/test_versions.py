@@ -221,3 +221,13 @@ def test_detail_month_range_survives_year_window_scans(conn):
         later = T0 + dt.timedelta(days=n)
         result = sight(conn, facts(built=built_from_floor_years(9, taipei_date(later))), later)
         assert not result.changed and result.facts.built == month
+
+
+def test_a_wrong_first_price_is_corrected_once_the_new_price_is_seen_twice(conn):
+    """事後審查 CX-1：第一次記到的價格錯了（少打一位數），之後一直是正確的價格。
+    跳 3 倍以上的新價格第一次先擋下；同樣的值再看到一次就接受，不能永遠停在錯的值。"""
+    sight(conn, facts(price_yuan=3_210_000), T0)  # 321 萬（少一位數）
+    sight(conn, facts(price_yuan=32_100_000), T0 + dt.timedelta(hours=1))  # 跳 10 倍：先擋下
+    assert [p for _, p in versions.price_points(conn, "cthouse", "X1")] == [3_210_000]
+    sight(conn, facts(price_yuan=32_100_000), T0 + dt.timedelta(hours=4))  # 再看到同樣的值
+    assert [p for _, p in versions.price_points(conn, "cthouse", "X1")][-1] == 32_100_000

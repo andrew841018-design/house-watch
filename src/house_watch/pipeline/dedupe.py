@@ -571,12 +571,15 @@ def _group_record(
     prices = {}
     for r in group:
         summary = versions.price_summary(versions.price_points(conn, r.source, r.source_id))
-        prices[(r.source, r.source_id)] = summary.price
+        current = summary.price
+        if r.facts.price_yuan is not None and versions.price_rejected(conn, r.source, r.source_id):
+            current = None  # 最新看到的價格被擋下、還沒確認（CX-1）：現價未知，網頁判待確認
+        prices[(r.source, r.source_id)] = current
         members.append(
             {
                 "src": r.source,
                 "id": r.source_id,
-                "price": summary.price,
+                "price": current,
                 "price_first": summary.price_first,
                 "price_drop_at": summary.price_drop_at,
                 "site_original_price": r.facts.site_original_price_yuan,

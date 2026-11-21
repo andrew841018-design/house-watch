@@ -308,3 +308,19 @@ def test_an_adapter_crash_fails_only_that_scan(env, site, monkeypatch):
     monkeypatch.setattr(pipeline_kit.FakeAdapter, "parse_list", boom)
     env.update()
     assert statuses(env)[-1] == ("full", "failed", "page_invalid")
+
+
+def test_a_rejected_price_jump_leaves_the_price_unknown_until_confirmed(env, site):
+    """事後審查 CX-1：被擋下的價格（跳 3 倍以上）不能讓網頁沿用舊價格判斷「符合」；
+    先變成未知（待確認），下一次看到同樣的價格就接受。"""
+    unit = Unit(id="P1", price_wan=321)
+    site.add(unit)
+    env.update()
+    unit.price_wan = 3210
+    env.clock.advance(3 * HOUR)  # 下一次探測（每 3 小時）才看得到新價格
+    env.update()
+    member = env.listings_file().groups[0].members[0]
+    assert member.price is None
+    env.clock.advance(3 * HOUR)
+    env.update()
+    assert env.listings_file().groups[0].members[0].price == 32_100_000
