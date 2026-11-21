@@ -440,3 +440,17 @@ def test_unexpected_error_is_logged_with_masked_paths(tmp_path, steps, monkeypat
     assert steps.run(tmp_path) == 1
     text = _log_text(tmp_path)
     assert "RuntimeError" in text and str(Path.home()) not in text
+
+
+def test_tick_refuses_to_start_without_a_settings_file(tmp_path, monkeypatch):
+    """事後審查 SA-2、P-11：排程檔漏了環境變數時，tick 找不到設定檔就停（結束碼 2），
+    不能用空設定在預設位置另建資料夾、另起一個爬蟲。"""
+    from house_watch import paths
+    from house_watch.errors import ExitCode
+
+    monkeypatch.delenv("HOUSE_WATCH_CONFIG")
+    monkeypatch.setattr(paths, "default_config_dir", lambda: tmp_path / "no_config")
+    data = Path(os.environ["HOUSE_WATCH_DATA_DIR"])
+    code = tick.run_tick(clock=FakeClock(START), log_directory=tmp_path / "logs", console=False)
+    assert code == int(ExitCode.CONFIG)
+    assert not data.exists()

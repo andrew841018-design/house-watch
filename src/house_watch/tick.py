@@ -49,7 +49,7 @@ from typing import Any
 
 from filelock import FileLock, Timeout
 
-from house_watch import cli, db, export
+from house_watch import cli, db, export, paths
 from house_watch.clock import Clock, SystemClock, from_iso, taipei_date, to_iso
 from house_watch.errors import ExitCode, HouseWatchError
 from house_watch.ops.logging import tick_logging
@@ -617,6 +617,17 @@ def run_tick(
     ui = cli.Ui()
     clock = clock or SystemClock()
     with tick_logging(log_directory, mask=ui.mask, console=console) as log:
+        if settings is None:
+            config_file, _explicit = paths.settings_file()
+            if not config_file.is_file():
+                # 事後審查 SA-2、P-11：排程檔漏了 HOUSE_WATCH_CONFIG 時，不能用空設定在預設位置
+                # 另建資料夾、另起一個爬蟲，網站也會默默停更。
+                log.error(
+                    "找不到本機設定檔 %s；排程不會用空設定另起一套資料。"
+                    "請設 HOUSE_WATCH_CONFIG，或用 house-watch schedule install 重寫排程檔。",
+                    config_file,
+                )
+                return int(ExitCode.CONFIG)
         try:
             settings = settings if settings is not None else load_settings()
         except HouseWatchError as exc:

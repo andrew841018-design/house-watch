@@ -402,7 +402,7 @@ class Settings:
         for source_id, base in self.public.sources.items():
             override = self.local.sources.get(source_id)
             if override is not None:
-                base = base.model_copy(update=override.model_dump(exclude_none=True))
+                base = _merge_source(base, override)
             merged[source_id] = base
         return merged
 
@@ -486,4 +486,20 @@ def load_settings(
     unknown_sources = [s for s in local.sources if s not in public.sources]
     if unknown_sources:
         raise ConfigError(f"sources 有不存在的來源：{', '.join(unknown_sources)}")
+    for source_id, override in local.sources.items():
+        base = public.sources[source_id]
+        day = override.max_requests_day
+        if day is not None and day > base.max_requests_day:
+            raise ConfigError(
+                f"sources.{source_id}.max_requests_day 只能調低：每日上限是擁有者定的禮貌上限"
+            )
+        try:
+            _merge_source(base, override)
+        except ValidationError as exc:
+            raise ConfigError(f"sources.{source_id}：{_describe(exc)}") from None
     return Settings(public=public, local=local)
+
+
+def _merge_source(base: SourceConfig, override: SourceOverride) -> SourceConfig:
+    """公開預設加上本機覆寫，合併後重新檢查（事後審查 SA-7：model_copy 不會重新驗證）。"""
+    return SourceConfig.model_validate({**base.model_dump(), **override.model_dump(exclude_none=True)})

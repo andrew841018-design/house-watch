@@ -154,3 +154,19 @@ def test_criteria_key_list_covers_profile_fields():
     }
     assert profile_fields <= CRITERIA_KEYS
     assert "profiles" in CRITERIA_KEYS
+
+
+def test_source_overrides_are_validated_after_merging(tmp_path):
+    """事後審查 SA-7：本機覆寫合併後要重新檢查；每日上限只能調低（擁有者定的禮貌上限）。"""
+    path = tmp_path / "settings.toml"
+    path.write_text("[sources.rakuya]\nmax_requests_full = 9000\n", encoding="utf-8")
+    with pytest.raises(ConfigError, match="max_requests_full"):
+        load_settings(local_path=path)
+    path.write_text("[sources.cthouse]\nmax_requests_day = 10\n", encoding="utf-8")
+    with pytest.raises(ConfigError, match="max_requests_full"):  # 單次 220 大於每日 10
+        load_settings(local_path=path)
+    path.write_text("[sources.cthouse]\nmax_requests_day = 5000\n", encoding="utf-8")
+    with pytest.raises(ConfigError, match="只能調低"):
+        load_settings(local_path=path)
+    path.write_text("[sources.cthouse]\nmax_requests_full = 200\n", encoding="utf-8")
+    assert load_settings(local_path=path).sources["cthouse"].max_requests_full == 200
