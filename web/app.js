@@ -587,7 +587,7 @@ function renderFreshness() {
       { class: "fresh-table" },
       el("thead", {}, el("tr", {}, el("th", { text: "來源" }), el("th", { text: "最後成功" }), el("th", { text: "最後完整掃描" }), el("th", { text: "狀態" }))),
       el("tbody", {}, rows),
-      el("thead", {}, el("tr", {}, el("th", { text: "資料集" }), el("th", { text: "最後檢查" }), el("th", { text: "資料截至／版本" }), el("th", { text: "狀態" }))),
+      el("thead", {}, el("tr", {}, el("th", { text: "資料集" }), el("th", { text: "最後成功" }), el("th", { text: "資料截至／版本" }), el("th", { text: "狀態" }))),
       el("tbody", {}, datasetRows),
     ),
     el("p", { class: "muted small", text: "時間都是台北時間。「最後成功」是最近一次成功抓到資料；「最後完整掃描」才會用來判斷下架。過期門檻依各來源分開設定。" }),

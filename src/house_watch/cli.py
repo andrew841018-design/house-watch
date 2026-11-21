@@ -61,6 +61,7 @@ from house_watch.export import (
     NotAvailable,
     Providers,
     export_site,
+    latest_full_failures,
     latest_scans,
     load_entry,
     load_manifest,
@@ -315,11 +316,12 @@ def step_doorindex(ctx: StepContext) -> StepOutcome:
         info = refresh(client, ctx.data.root, ctx.clock.now(), ctx=geo)
     version = getattr(info, "version", None)
     version = version.strip() if isinstance(version, str) and version.strip() else None
+    outcome = _outcome(info if hasattr(info, "ok") else None)
     with db.transaction(ctx.conn):
-        put_kv(ctx.conn, KV_DOORINDEX_LAST_CHECK, to_iso(ctx.clock.now()))
+        if outcome.ok:  # 事後審查 AT-1：只記成功的時間，網頁才看得出過期
+            put_kv(ctx.conn, KV_DOORINDEX_LAST_CHECK, to_iso(ctx.clock.now()))
         if version is not None:
             put_kv(ctx.conn, KV_DOORINDEX_VERSION, version)
-    outcome = _outcome(info if hasattr(info, "ok") else None)
     return StepOutcome(outcome.ok, outcome.summary or (f"版本 {version}" if version else ""))
 
 
@@ -329,11 +331,13 @@ def step_lvr(ctx: StepContext) -> StepOutcome:
     as_of = getattr(result, "as_of", None)
     if isinstance(as_of, dt.datetime):
         as_of = as_of.astimezone(TAIPEI).date()
+    outcome = _outcome(result)
     with db.transaction(ctx.conn):
-        put_kv(ctx.conn, KV_LVR_LAST_CHECK, to_iso(ctx.clock.now()))
+        if outcome.ok:  # 事後審查 AT-1：只記成功的時間，網頁才看得出過期
+            put_kv(ctx.conn, KV_LVR_LAST_CHECK, to_iso(ctx.clock.now()))
         if isinstance(as_of, dt.date):
             put_kv(ctx.conn, KV_LVR_AS_OF, as_of.isoformat())
-    return _outcome(result)
+    return outcome
 
 
 def step_sources(ctx: StepContext) -> StepOutcome:
@@ -709,6 +713,7 @@ def _doctor_sources(doc: _Doctor, conn: sqlite3.Connection, settings: Settings) 
     area_ids = [area.id for area in settings.enabled_areas]
     times = scan_times(conn, area_ids)
     latest = latest_scans(conn, area_ids)
+    full_failures = latest_full_failures(conn, area_ids)
     states = source_states(conn)
     now = SystemClock().now()
     for source_id in sorted(settings.sources):
@@ -721,6 +726,11 @@ def _doctor_sources(doc: _Doctor, conn: sqlite3.Connection, settings: Settings) 
         ]
         if last is not None:
             parts.append(f"最近一次 #{last.scan_id} {last.status} {_code_text(last.error_code)}")
+        failed = full_failures.get(source_id)
+        if failed is not None and (last is None or failed.scan_id != last.scan_id):
+            parts.append(
+                f"某區完整掃描沒成功 #{failed.scan_id} {failed.status} {_code_text(failed.error_code)}"
+            )
         if state is not None:
             if state.paused_until is not None and state.paused_until > now:
                 parts.append(f"暫停到 {to_iso(state.paused_until)}")
@@ -757,11 +767,11 @@ def _doctor_runs(doc: _Doctor, conn: sqlite3.Connection) -> None:
         )
     doc.section("資料集")
     doc.item(
-        f"實價登錄：最後檢查 {read_kv(conn, KV_LVR_LAST_CHECK) or '—'}、"
+        f"實價登錄：最後成功 {read_kv(conn, KV_LVR_LAST_CHECK) or '—'}、"
         f"資料截至 {read_kv(conn, KV_LVR_AS_OF) or '—'}"
     )
     doc.item(
-        f"門牌：最後檢查 {read_kv(conn, KV_DOORINDEX_LAST_CHECK) or '—'}、"
+        f"門牌：最後成功 {read_kv(conn, KV_DOORINDEX_LAST_CHECK) or '—'}、"
         f"版本 {read_kv(conn, KV_DOORINDEX_VERSION) or '—'}"
     )
 

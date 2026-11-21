@@ -12,7 +12,7 @@ launchd（或 cron、Windows 工作排程器）在時段內定時呼叫。每一
      每日保留 `[schedule] backup_keep` 份，每週（每個 ISO 週的第一份）保留 WEEKLY_KEEP 份。
    - 門牌詮釋資料：上次成功距今 ≥ `doorindex_every_days` 天（台北日期）。
    - 實價登錄：今天（台北日期）還沒成功過（或距上次成功 ≥ `lvr_every_hours`）。
-     成功與否記在 tick 自己的 kv（KV_*），不看 `lvr.last_check`：那個值失敗時也會更新。
+     成功與否記在 tick 自己的 kv（KV_*）。`lvr.last_check` 也只在成功時更新（給網頁判斷過期）。
    - 門牌與實價登錄失敗後，至少隔 RETRY_HOURS 小時才再試（禮貌規則）。
    - 各（來源, 區域）的完整掃描或探測、詳細頁佇列：規則在 pipeline.scan（decide_mode），
      和 update 同一套；這裡只決定這一輪讓哪些來源跑（見 4）。

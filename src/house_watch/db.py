@@ -43,9 +43,9 @@ SCAN_ACCEPTED = "accepted"
 SCAN_STATUSES = (SCAN_RUNNING, SCAN_OK, SCAN_INVALID, SCAN_FAILED, SCAN_ACCEPTED)
 SCAN_OK_STATUSES = (SCAN_OK, SCAN_ACCEPTED)
 
-KV_LVR_LAST_CHECK = "lvr.last_check"  # UTC ISO 時間
+KV_LVR_LAST_CHECK = "lvr.last_check"  # UTC ISO 時間；最後一次成功（失敗不更新，事後審查 AT-1）
 KV_LVR_AS_OF = "lvr.as_of"  # YYYY-MM-DD，實價登錄資料截至的日期
-KV_DOORINDEX_LAST_CHECK = "doorindex.last_check"  # UTC ISO 時間
+KV_DOORINDEX_LAST_CHECK = "doorindex.last_check"  # UTC ISO 時間；最後一次成功（失敗不更新）
 KV_DOORINDEX_VERSION = "doorindex.version"  # 門牌資料的版本文字
 
 _PRECISIONS = ", ".join(f"'{p.value}'" for p in Precision)

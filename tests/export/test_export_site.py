@@ -21,7 +21,7 @@ from hw_export_samples import (
     write_settings,
 )
 
-from house_watch import export
+from house_watch import db, export
 from house_watch.clock import FakeClock
 from house_watch.export import (
     ExportError,
@@ -103,6 +103,36 @@ def test_manifest_lists_every_file_with_hash(env):
     # manifest 不在網站裡；暫存資料夾也不留
     assert not (site_dir(data) / "manifest.json").exists()
     assert sorted(p.name for p in data.root.iterdir() if p.name.startswith(".")) == []
+
+
+def test_an_area_full_scan_failure_is_not_hidden_by_later_success(env):
+    """事後審查 AT-2：中壢區的完整掃描失敗後，桃園區完整掃描與探測成功，來源仍要帶著錯誤代碼。
+    那一區沒有有效完整掃描就不會判下架，網頁不能顯示「正常」。"""
+    data, conn, *_ = env
+    rows = [
+        ("zhongli_ic", "full", "2026-06-01T00:00:00Z", "2026-06-01T00:20:00Z", "failed", "budget_exhausted"),
+        ("taoyuan_core", "full", "2026-06-01T00:30:00Z", "2026-06-01T00:50:00Z", "ok", None),
+        ("taoyuan_core", "probe", "2026-06-01T03:00:00Z", "2026-06-01T03:01:00Z", "ok", None),
+    ]
+    with db.transaction(conn):
+        for area, mode, started, finished, status, code in rows:
+            conn.execute(
+                "INSERT INTO scans (source, area, mode, started_at, finished_at, status,"
+                " scope_hash, error_code) VALUES ('cthouse', ?, ?, ?, ?, ?, 'h', ?)",
+                (area, mode, started, finished, status, code),
+            )
+    _export(env)
+    sources = {s.id: s for s in _meta(data).sources}
+    assert sources["cthouse"].error_code == "budget_exhausted"
+    # 之後中壢區的完整掃描成功了，錯誤就消失
+    with db.transaction(conn):
+        conn.execute(
+            "INSERT INTO scans (source, area, mode, started_at, finished_at, status, scope_hash,"
+            " error_code) VALUES ('cthouse', 'zhongli_ic', 'full', '2026-06-02T00:00:00Z',"
+            " '2026-06-02T00:20:00Z', 'ok', 'h', NULL)"
+        )
+    _export(env)
+    assert {s.id: s for s in _meta(data).sources}["cthouse"].error_code is None
 
 
 def test_sample_export_meta(env):

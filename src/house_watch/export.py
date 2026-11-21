@@ -423,6 +423,39 @@ def latest_scans(conn: sqlite3.Connection, area_ids: list[str]) -> dict[str, Lat
     return latest
 
 
+def latest_full_failures(conn: sqlite3.Connection, area_ids: list[str]) -> dict[str, LatestScan]:
+    """各（來源, 區域）最後一次完整掃描沒成功的，每個來源取最近的一筆（事後審查 AT-2）。
+
+    某一區的完整掃描失敗或無效，不能被別區或探測的成功蓋掉：那一區沒有有效完整掃描，
+    就不會判下架，網頁卻會顯示「正常」。
+    """
+    marks = ", ".join("?" for _ in area_ids)
+    rows = conn.execute(
+        f"SELECT scan_id, source, area, status, error_code, finished_at FROM scans "
+        f"WHERE mode = 'full' AND finished_at IS NOT NULL AND area IN ({marks})",
+        tuple(area_ids),
+    ).fetchall()
+    last: dict[tuple[str, str], LatestScan] = {}
+    for scan_id, source, area, status, error_code, finished_at in rows:
+        when = _parse_time(finished_at)
+        if when is None:
+            continue
+        current = last.get((source, area))
+        if current is None or (when, scan_id) > (current.finished_at, current.scan_id):
+            last[(source, area)] = LatestScan(scan_id, str(status), error_code, when)
+    failures: dict[str, LatestScan] = {}
+    for (source, _area), scan in last.items():
+        if scan.status in OK_SCAN_STATUSES:
+            continue
+        current = failures.get(source)
+        if current is None or (scan.finished_at, scan.scan_id) > (
+            current.finished_at,
+            current.scan_id,
+        ):
+            failures[source] = scan
+    return failures
+
+
 @dataclass(frozen=True)
 class SourceStateRow:
     paused_until: dt.datetime | None
@@ -442,13 +475,18 @@ def source_states(conn: sqlite3.Connection) -> dict[str, SourceStateRow]:
 
 
 def source_error(
-    latest: LatestScan | None, state: SourceStateRow | None, now: dt.datetime
+    latest: LatestScan | None,
+    state: SourceStateRow | None,
+    now: dt.datetime,
+    full_failure: LatestScan | None = None,
 ) -> ErrorCode | None:
-    """來源目前的錯誤代碼：最後一次掃描失敗時用它的代碼；否則暫停中時用暫停的原因。"""
-    if latest is not None and latest.status not in OK_SCAN_STATUSES:
-        code = public_code(latest.error_code)
-        if code is not None:
-            return code
+    """來源目前的錯誤代碼：最後一次掃描失敗時用它的代碼；其次是某一區最後一次完整掃描
+    沒成功的代碼（latest_full_failures）；再其次，暫停中時用暫停的原因。"""
+    for scan in (latest, full_failure):
+        if scan is not None and scan.status not in OK_SCAN_STATUSES:
+            code = public_code(scan.error_code)
+            if code is not None:
+                return code
     if state is not None and state.paused_until is not None and state.paused_until > now:
         return public_code(state.last_error) or ErrorCode.PAUSED
     return None
@@ -459,6 +497,7 @@ def _sources_meta(
 ) -> list[SourceMeta]:
     times = scan_times(conn, area_ids)
     latest = latest_scans(conn, area_ids)
+    full_failures = latest_full_failures(conn, area_ids)
     states = source_states(conn)
     result = []
     for source_id, config in sorted(settings.sources.items()):
@@ -474,7 +513,9 @@ def _sources_meta(
                 last_ok=stamp.last_ok,
                 last_full_ok=stamp.last_full_ok,
                 paused_until=paused if paused is not None and paused > now else None,
-                error_code=source_error(latest.get(source_id), state, now),
+                error_code=source_error(
+                    latest.get(source_id), state, now, full_failures.get(source_id)
+                ),
             )
         )
     return result

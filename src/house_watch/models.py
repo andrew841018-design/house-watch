@@ -609,14 +609,14 @@ class SourceMeta(_Model):
 
 
 class LvrMeta(_Model):
-    """實價登錄：最後檢查時間與資料截至日。"""
+    """實價登錄：最後一次成功的檢查時間（last_check）與資料截至日。"""
 
     last_check: OptUtcDateTime = None
     as_of: OptDate = None
 
 
 class DoorindexMeta(_Model):
-    """門牌資料：最後檢查時間與版本。"""
+    """門牌資料：最後一次成功的檢查時間（last_check）與版本。"""
 
     last_check: OptUtcDateTime = None
     version: OptText = None

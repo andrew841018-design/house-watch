@@ -131,7 +131,7 @@
     },
     "DoorindexMeta": {
       "additionalProperties": false,
-      "description": "門牌資料：最後檢查時間與版本。",
+      "description": "門牌資料：最後一次成功的檢查時間（last_check）與版本。",
       "properties": {
         "last_check": {
           "anyOf": [
@@ -818,7 +818,7 @@
     },
     "LvrMeta": {
       "additionalProperties": false,
-      "description": "實價登錄：最後檢查時間與資料截至日。",
+      "description": "實價登錄：最後一次成功的檢查時間（last_check）與資料截至日。",
       "properties": {
         "as_of": {
           "anyOf": [

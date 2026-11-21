@@ -185,7 +185,14 @@ def test_download_failure_is_reported_and_keeps_imports(served, monkeypatch):
         )
 
     monkeypatch.setattr(importer, "FETCHER_FACTORY", factory)
-    report, as_of, _ = run_lvr("taoyuan_core", FakeClock(NOW))
+    report, as_of, data = run_lvr("taoyuan_core", FakeClock(NOW))
     step = report.steps[0]
     assert step.status == "partial" and "lvr_invalid" in step.message
     assert as_of == "2026-09-10", "已匯入的季檔保留，資料截至日照實寫"
+    # 事後審查 AT-1：失敗時不能更新「最後成功」，否則網頁永遠不會顯示過期。
+    conn = db.open_or_init(data)
+    try:
+        last = conn.execute("SELECT value FROM kv WHERE key = 'lvr.last_check'").fetchone()
+    finally:
+        conn.close()
+    assert last is None
