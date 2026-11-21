@@ -1,0 +1,405 @@
+{
+ "note": "實價登錄真實成交（公開資料）的 golden 案例。只保留單價計算會讀的欄位；地址、樓層、完工日、備註換成佔位字或空白（扣車位單價用不到）。中位數是示意值，不是任何區的真實行情。預期值由另一支獨立的計算產生，並逐筆和官方單價欄交叉檢查。",
+ "min_samples": 20,
+ "medians": [
+  {
+   "level": "district",
+   "district": "桃園區",
+   "ptype": "ramp_flat",
+   "price": {
+    "n": 480,
+    "p25": 1530000,
+    "p50": 1660000,
+    "p75": 1790000
+   },
+   "area": {
+    "n": 420,
+    "p25": 2710,
+    "p50": 3040,
+    "p75": 3360
+   }
+  },
+  {
+   "level": "district",
+   "district": "桃園區",
+   "ptype": "mechanical",
+   "price": {
+    "n": 12,
+    "p25": 700000,
+    "p50": 800000,
+    "p75": 900000
+   },
+   "area": {
+    "n": 11,
+    "p25": 1100,
+    "p50": 1200,
+    "p75": 1300
+   }
+  },
+  {
+   "level": "district",
+   "district": "中壢區",
+   "ptype": "ramp_flat",
+   "price": {
+    "n": 350,
+    "p25": 1450000,
+    "p50": 1570000,
+    "p75": 1690000
+   },
+   "area": {
+    "n": 300,
+    "p25": 2580,
+    "p50": 2900,
+    "p75": 3230
+   }
+  },
+  {
+   "level": "district",
+   "district": "中壢區",
+   "ptype": "ground_flat",
+   "price": {
+    "n": 4,
+    "p25": 1000000,
+    "p50": 1200000,
+    "p75": 1300000
+   },
+   "area": {
+    "n": 3,
+    "p25": 2000,
+    "p50": 2100,
+    "p75": 2200
+   }
+  },
+  {
+   "level": "district_flat",
+   "district": "中壢區",
+   "ptype": "flat",
+   "price": {
+    "n": 360,
+    "p25": 1440000,
+    "p50": 1560000,
+    "p75": 1680000
+   },
+   "area": {
+    "n": 310,
+    "p25": 2560,
+    "p50": 2880,
+    "p75": 3210
+   }
+  },
+  {
+   "level": "district_flat",
+   "district": "桃園區",
+   "ptype": "flat",
+   "price": {
+    "n": 500,
+    "p25": 1520000,
+    "p50": 1650000,
+    "p75": 1780000
+   },
+   "area": {
+    "n": 430,
+    "p25": 2700,
+    "p50": 3030,
+    "p75": 3350
+   }
+  },
+  {
+   "level": "city",
+   "district": "*",
+   "ptype": "ramp_flat",
+   "price": {
+    "n": 4000,
+    "p25": 1380000,
+    "p50": 1500000,
+    "p75": 1620000
+   },
+   "area": {
+    "n": 3500,
+    "p25": 2620,
+    "p50": 2960,
+    "p75": 3290
+   }
+  },
+  {
+   "level": "city",
+   "district": "*",
+   "ptype": "ground_flat",
+   "price": {
+    "n": 90,
+    "p25": 1100000,
+    "p50": 1250000,
+    "p75": 1400000
+   },
+   "area": {
+    "n": 80,
+    "p25": 2300,
+    "p50": 2650,
+    "p75": 2990
+   }
+  },
+  {
+   "level": "city",
+   "district": "*",
+   "ptype": "mechanical",
+   "price": {
+    "n": 300,
+    "p25": 880000,
+    "p50": 990000,
+    "p75": 1120000
+   },
+   "area": {
+    "n": 260,
+    "p25": 1240,
+    "p50": 1370,
+    "p75": 1510
+   }
+  }
+ ],
+ "cases": [
+  {
+   "serial": "RPQPMLSJRHLGFAH56DA",
+   "category": "official",
+   "basis": "official",
+   "q_lo": 18200000,
+   "q_hi": 18200000,
+   "k_lo": 19041,
+   "k_hi": 19041,
+   "flags": []
+  },
+  {
+   "serial": "RPUOMLRJQHLGFAH66DA",
+   "category": "official",
+   "basis": "official",
+   "q_lo": 15900000,
+   "q_hi": 15900000,
+   "k_lo": 13064,
+   "k_hi": 13064,
+   "flags": []
+  },
+  {
+   "serial": "RPQQMLPKJHLGFBH38DA",
+   "category": "price_bundled_area_reg",
+   "basis": "estimated",
+   "q_lo": 32620000,
+   "q_hi": 33100000,
+   "k_lo": 29871,
+   "k_hi": 29871,
+   "flags": [
+    "up_price_district"
+   ]
+  },
+  {
+   "serial": "RPUNMLPKOHLGFAH88DA",
+   "category": "price_bundled_area_reg",
+   "basis": "estimated",
+   "q_lo": 18520000,
+   "q_hi": 19040000,
+   "k_lo": 14354,
+   "k_hi": 14354,
+   "flags": [
+    "up_price_district"
+   ]
+  },
+  {
+   "serial": "RPQQMLPJOHLGFBH78DA",
+   "category": "both_bundled",
+   "basis": "estimated",
+   "q_lo": 12510000,
+   "q_hi": 12750000,
+   "k_lo": 12982,
+   "k_hi": 13632,
+   "flags": [
+    "up_area_district",
+    "up_price_district"
+   ]
+  },
+  {
+   "serial": "RPUOMLRLNHLGFBH66DA",
+   "category": "both_bundled",
+   "basis": "estimated",
+   "q_lo": 14270000,
+   "q_hi": 14510000,
+   "k_lo": 17734,
+   "k_hi": 18384,
+   "flags": [
+    "up_area_district",
+    "up_price_district"
+   ]
+  },
+  {
+   "serial": "RPSOMLPJLHLGFAH38DA",
+   "category": "both_bundled_multi",
+   "basis": "estimated",
+   "q_lo": 35920000,
+   "q_hi": 36440000,
+   "k_lo": 25333,
+   "k_hi": 26633,
+   "flags": [
+    "up_area_district",
+    "up_price_district"
+   ]
+  },
+  {
+   "serial": "RPRNMLPKLHLGFAH28DA",
+   "category": "price_split_area_none",
+   "basis": "estimated",
+   "q_lo": 11580000,
+   "q_hi": 11580000,
+   "k_lo": 12215,
+   "k_hi": 12865,
+   "flags": [
+    "up_area_district"
+   ]
+  },
+  {
+   "serial": "RPSRMLLLRHLGFAH09DA",
+   "category": "multi_split_total",
+   "basis": "official",
+   "q_lo": 48460000,
+   "q_hi": 48460000,
+   "k_lo": 32017,
+   "k_hi": 32017,
+   "flags": []
+  },
+  {
+   "serial": "RPSNMLMLIIKGFAH87DA",
+   "category": "official",
+   "basis": "official",
+   "q_lo": 27400000,
+   "q_hi": 27400000,
+   "k_lo": 16322,
+   "k_hi": 16322,
+   "flags": []
+  },
+  {
+   "serial": "RPQOMLTJMHLGFDH98DA",
+   "category": "no_parking",
+   "basis": "official",
+   "q_lo": 4200000,
+   "q_hi": 4200000,
+   "k_lo": 8927,
+   "k_hi": 8927,
+   "flags": []
+  },
+  {
+   "serial": "RPTPMLMLMHLGFEH98DA",
+   "category": "no_parking",
+   "basis": "official",
+   "q_lo": 8100000,
+   "q_hi": 8100000,
+   "k_lo": 16570,
+   "k_hi": 16570,
+   "flags": []
+  },
+  {
+   "serial": "RPSNMLLKKHLGFCH18EA",
+   "category": "mechanical",
+   "basis": "official",
+   "q_lo": 5420000,
+   "q_hi": 5420000,
+   "k_lo": 8174,
+   "k_hi": 8174,
+   "flags": []
+  },
+  {
+   "serial": "RPSPMLLKOHLGFAH48DA",
+   "category": "mechanical_bundled",
+   "basis": "estimated",
+   "q_lo": 9880000,
+   "q_hi": 10120000,
+   "k_lo": 9861,
+   "k_hi": 10131,
+   "flags": [
+    "up_area_city",
+    "up_price_city"
+   ]
+  },
+  {
+   "serial": "RPRNMLNKJHLGFCH08DA",
+   "category": "other_type",
+   "basis": "none",
+   "q_lo": null,
+   "q_hi": null,
+   "k_lo": null,
+   "k_hi": null,
+   "flags": [
+    "up_unknown_ptype"
+   ]
+  },
+  {
+   "serial": "RPRNMLQLNHKGFCH78DA",
+   "category": "no_detail",
+   "basis": "estimated",
+   "q_lo": 8830000,
+   "q_hi": 9070000,
+   "k_lo": 11794,
+   "k_hi": 11794,
+   "flags": [
+    "up_price_city"
+   ]
+  },
+  {
+   "serial": "RPSNMLNJQHLGFAH58DA",
+   "category": "price_bundled_area_reg",
+   "basis": "estimated",
+   "q_lo": 11210000,
+   "q_hi": 11470000,
+   "k_lo": 9498,
+   "k_hi": 9498,
+   "flags": [
+    "up_price_district"
+   ]
+  },
+  {
+   "serial": "RPSNMLLLRHLGFBH78DA",
+   "category": "both_bundled",
+   "basis": "estimated",
+   "q_lo": 7110000,
+   "q_hi": 7350000,
+   "k_lo": 11606,
+   "k_hi": 12256,
+   "flags": [
+    "up_area_district",
+    "up_price_district"
+   ]
+  },
+  {
+   "serial": "RPUNMLKMOHLGFAH58DA",
+   "category": "multi_official",
+   "basis": "official",
+   "q_lo": 15000000,
+   "q_hi": 15000000,
+   "k_lo": 23798,
+   "k_hi": 23798,
+   "flags": []
+  },
+  {
+   "serial": "RPVPMLLMPHKGFBH09DA",
+   "category": "cap",
+   "basis": "estimated",
+   "q_lo": 24320000,
+   "q_hi": 24560000,
+   "k_lo": 23444,
+   "k_hi": 23444,
+   "flags": [
+    "up_area_capped",
+    "up_area_district_flat",
+    "up_price_district_flat"
+   ]
+  },
+  {
+   "serial": "RPPNMLMLPHKGFBH38EA",
+   "category": "remark_price_official_zero",
+   "basis": "estimated",
+   "q_lo": 11410000,
+   "q_hi": 11650000,
+   "k_lo": 10647,
+   "k_hi": 11297,
+   "flags": [
+    "up_area_district",
+    "up_price_district"
+   ]
+  }
+ ]
+}
