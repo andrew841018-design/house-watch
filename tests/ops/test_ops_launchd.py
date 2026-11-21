@@ -398,3 +398,22 @@ def test_install_refuses_publish_files_in_protected_locations(tmp_path, no_subpr
     with pytest.raises(ConfigError, match="^網站 repo在 ~/Desktop"):
         _install(base, other_paths=[("網站 repo", base / "home" / "Desktop" / "site")])
     assert not (base / "LaunchAgents").exists()
+
+
+def test_schedule_install_refuses_without_a_settings_file(monkeypatch, tmp_path, capsys, no_subprocess):
+    """修完再審 F1-8：找不到本機設定檔時，裝出來的排程每小時都會以結束碼 2 停止（tick 的檢查）。
+    所以安裝時就拒絕，不寫 plist。"""
+    from house_watch import paths
+
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.delenv("HOUSE_WATCH_CONFIG")
+    monkeypatch.setattr(paths, "default_config_dir", lambda: tmp_path / "no_config")
+    monkeypatch.setenv(launchd.ENV_RUNTIME_DIR, str(tmp_path / "runtime"))
+    monkeypatch.setenv("HOUSE_WATCH_LOG_DIR", str(tmp_path / "logs"))
+    monkeypatch.setattr(launchd, "launch_agents_dir", lambda: tmp_path / "LaunchAgents")
+    monkeypatch.setattr(launchd, "TCC_HOME_DIRS", ())
+    monkeypatch.setattr(launchd, "source_checkout", lambda: None)
+    _fake_runtime(tmp_path / "runtime")
+    assert launchd.run_schedule(action="install", every_hours=None) == 2
+    assert "設定檔" in capsys.readouterr().err
+    assert not (tmp_path / "LaunchAgents").exists()

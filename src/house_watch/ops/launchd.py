@@ -334,10 +334,17 @@ def run_schedule(*, action: str, every_hours: int | None = None) -> int:
         ui.say(f"{'已刪除' if existed else '沒有找到'}：{plist_path(agents)}")
         ui.say(f"如果排程已載入，執行：{command}")
         return int(ExitCode.OK)
+    config_file, explicit = paths.settings_file()
+    if not config_file.is_file():
+        # 修完再審 F1-8：tick 找不到設定檔就以結束碼 2 停止，裝了也是每小時都停，所以先拒絕。
+        ui.error(
+            f"找不到本機設定檔：{config_file}。請用平常的 HOUSE_WATCH_CONFIG 執行，"
+            "或在這個預設位置建立 settings.toml"
+        )
+        return int(ExitCode.CONFIG)
     settings = _load(ui)
     schedule = settings.public.schedule
     local_tz = dt.datetime.now().astimezone().tzinfo or TAIPEI
-    config_file, explicit = paths.settings_file()
     env = schedule_environment(os.environ)
     result = install_schedule(
         window=schedule.window_hours,

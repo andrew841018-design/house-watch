@@ -629,7 +629,8 @@ def run_tick(
                 # 另建資料夾、另起一個爬蟲，網站也會默默停更。
                 log.error(
                     "找不到本機設定檔 %s；排程不會用空設定另起一套資料。"
-                    "請設 HOUSE_WATCH_CONFIG，或用 house-watch schedule install 重寫排程檔。",
+                    "請設 HOUSE_WATCH_CONFIG、在預設位置建立 settings.toml，"
+                    "或用 house-watch schedule install 重寫排程檔。",
                     config_file,
                 )
                 return int(ExitCode.CONFIG)
