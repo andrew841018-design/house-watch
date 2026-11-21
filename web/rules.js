@@ -420,6 +420,11 @@ function floorCheck(loRaw, hiRaw, range) {
 }
 
 // 開價物件的主建物（0.01 坪）。網站顯示值剛好等於門檻時可能是進位來的 → 待確認（R3-10）。
+// 網站只顯示到 0.1 坪時（數值是 0.1 坪的整數倍），真正的值可能差 ±0.05 坪（事後審查 P-7）。
+function displayedSlack(cp) {
+  return cp % 10 === 0 ? 5 : 0;
+}
+
 function mainListingCheck(facts, minPing) {
   const threshold = Math.round(minPing * 100);
   if (isConflict(facts.main_cp) || isConflict(facts.main_kind)) return pending("group_conflict");
@@ -427,15 +432,16 @@ function mainListingCheck(facts, minPing) {
   if (value === null) {
     // 權狀坪一定 ≥ 主建物；權狀都不到門檻，主建物就一定不到。
     const titleArea = nonNegInt(facts.title_area_cp);
-    if (titleArea !== null && titleArea < threshold) return failure("main_under");
+    if (titleArea !== null && titleArea + displayedSlack(titleArea) < threshold) return failure("main_under");
     return pending("main_missing");
   }
+  const slack = displayedSlack(value);
   // 不論口徑（主建物或主建物＋附屬），數值都 ≥ 真正的主建物；數值不到門檻就一定不符。
-  if (value < threshold) return failure("main_under");
+  if (value + slack < threshold) return failure("main_under");
   const kind = enumValue("MainKind", facts.main_kind);
   if (kind === null) return pending("main_kind_missing");
   if (kind === "main_plus_aux") return pending("main_plus_aux");
-  if (value === threshold) return pending("main_boundary");
+  if (value - slack <= threshold && value + slack >= threshold) return pending("main_boundary");
   return PASS;
 }
 
