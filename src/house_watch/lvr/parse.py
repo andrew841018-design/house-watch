@@ -225,7 +225,7 @@ def parse_total_floors(text: str | None) -> int | None:
 def parse_transfer_floors(text: str | None, floors_total: int | None = None) -> TransferFloors:
     """「四層」「一層，二層」「地下二層」「全」「五層，陽台」「五層，夾層」…（R1 §4）。
 
-    - 地下樓層是負數；「地下層」→ -1。
+    - 地下樓層是負數；「地下層」→ -1。同時有地上樓層時，地下不算進樓層區間。
     - 「全」是整棟：樓層 [1, 總樓層]（總樓層未知時樓層也未知）。
     - 陽台、見其他登記事項、平台、通道、騎樓只是附註，忽略。
     - 夾層、屋頂突出物是附帶加大空間，回傳對應的排除代碼。
@@ -268,7 +268,11 @@ def parse_transfer_floors(text: str | None, floors_total: int | None = None) -> 
             lo = min([*floors, *([lo] if lo is not None else [])])
             hi = max([*floors, *([hi] if hi is not None else [])])
     elif floors:
-        lo, hi = min(floors), max(floors)
+        # 同時有地上和地下時，地下（通常是另有建號的車位或儲藏）不算進樓層區間，
+        # 否則「七層，地下二層」會變成 -2～7 樓，樓層條件判不符（事後審查 CE-4）。
+        above = [f for f in floors if f > 0]
+        counted = above or floors
+        lo, hi = min(counted), max(counted)
     else:
         lo = hi = None
     return TransferFloors(lo=lo, hi=hi, whole=whole, extra=tuple(extra), unknown=tuple(unknown))
