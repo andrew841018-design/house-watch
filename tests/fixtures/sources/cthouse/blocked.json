@@ -1,0 +1,5 @@
+{
+  "status": 403,
+  "headers": {"content-type": "text/html", "server": "AkamaiGHost"},
+  "body": "<HTML><HEAD><TITLE>Access Denied</TITLE></HEAD><BODY>示意：存取被拒</BODY></HTML>"
+}

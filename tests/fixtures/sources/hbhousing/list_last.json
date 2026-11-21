@@ -1,0 +1,27 @@
+{
+  "code": 200,
+  "message": "Success",
+  "data": {
+    "cnts": 1,
+    "buyHouseListDatas": [
+      {
+        "sn": "CS100125",
+        "objName": "示意標題辛",
+        "price": 1555,
+        "originalPrice": null,
+        "lat": 24.9701,
+        "lon": 121.3211,
+        "doorplate": "桃園區示意街",
+        "zipCode": "330",
+        "floor": "10",
+        "floorTotal": "10",
+        "style": "華廈",
+        "age": 5.0,
+        "parking": "私有",
+        "mainArea": 29.4,
+        "area": 47.75,
+        "special": "3房(室)2廳2衛"
+      }
+    ]
+  }
+}

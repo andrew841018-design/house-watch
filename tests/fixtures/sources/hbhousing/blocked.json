@@ -1,0 +1,5 @@
+{
+  "status": 429,
+  "headers": {"content-type": "text/html", "server": "nginx", "retry-after": "3600"},
+  "body": "<html><body>示意：請求太頻繁</body></html>"
+}

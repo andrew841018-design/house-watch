@@ -1,0 +1,34 @@
+{
+  "RS": "OK",
+  "page": 3,
+  "total": 45,
+  "totalpage": 3,
+  "houses": [
+    {
+      "id": 1230001,
+      "target": "cthouse",
+      "case_name": "示意標題庚",
+      "sell_price": "1555",
+      "origin_trust_fee": "1555",
+      "latitude": 24.9701,
+      "longitude": 121.3211,
+      "address": "桃園市桃園區示意街",
+      "township_id": 330,
+      "object_tag": null,
+      "house_type_class": 2,
+      "floor_val": "10樓/共10樓",
+      "position_from": "10",
+      "position_to": "10",
+      "age": 5,
+      "age_val": "5年",
+      "main_build": 29.4,
+      "house_area": 47.75,
+      "r_type": "3房2廳2衛",
+      "parking_lot_belong": 1,
+      "parking_lot_price": 0.0,
+      "parking_lot_multi": [
+        {"parking_lot_exit": "", "parking_lot_type": "", "parking_lot_price": 0.0}
+      ]
+    }
+  ]
+}

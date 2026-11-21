@@ -1,0 +1,5 @@
+{
+  "status": 403,
+  "headers": {"content-type": "text/html", "server": "cloudflare", "cf-mitigated": "challenge"},
+  "body": "<html><head><title>Just a moment...</title></head><body><script src=\"/cdn-cgi/challenge-platform/h/b/orchestrate/jsch/v1\"></script>示意挑戰頁</body></html>"
+}
