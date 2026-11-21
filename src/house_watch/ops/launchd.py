@@ -27,6 +27,10 @@ uv.lock（`uv export` 產生 constraints）。升級步驟見 README。
   （預設 N＝probe_every_hours＝3：08、11、14、17、20、23）。時段是台北時間，安裝時換成這台
   電腦的本機時間（launchd 用本機時間，R1-25）。
 - 明確的 PATH（含 /usr/bin，發布要用 git 與 ssh）、WorkingDirectory、標準輸出／錯誤導到 log 資料夾。
+- 安裝當下設了的 HOUSE_WATCH_CONFIG、HOUSE_WATCH_DATA_DIR、HOUSE_WATCH_LOG_DIR、
+  HOUSE_WATCH_RUNTIME_DIR，換成絕對路徑寫進 EnvironmentVariables。排程跑 tick 時沒有安裝
+  當下的環境變數，不寫的話 tick 會改用預設位置（另一份設定、另一個資料夾）。設定檔和資料夾
+  一樣不能放在隱私保護的位置。
 - 沒有 RunAtLoad、KeepAlive：載入時不會馬上執行。睡眠錯過的那一輪，launchd 醒來後補跑一次；
   關機錯過的不補，下一個時段自然補上（R3-18）。
 """
@@ -47,13 +51,16 @@ from typing import Any, Protocol
 
 import platformdirs
 
+from house_watch import paths
 from house_watch.clock import TAIPEI, SystemClock, to_iso
 from house_watch.errors import ConfigError, ExitCode, HouseWatchError
-from house_watch.ops.logging import LAUNCHD_STDERR, LAUNCHD_STDOUT, log_dir
+from house_watch.ops.logging import ENV_LOG_DIR, LAUNCHD_STDERR, LAUNCHD_STDOUT, log_dir
 
 LABEL = "com.house-watch.tick"
 RUNTIME_APP_NAME = "house_watch_runtime"
 ENV_RUNTIME_DIR = "HOUSE_WATCH_RUNTIME_DIR"
+# 排程要沿用的路徑變數（安裝當下設了才寫進 plist）；plist 只多寫這幾個。
+SCHEDULE_ENV_KEYS = (paths.ENV_CONFIG, paths.ENV_DATA_DIR, ENV_LOG_DIR, ENV_RUNTIME_DIR)
 LAUNCHD_PATH = "/usr/bin:/bin:/usr/sbin:/sbin"
 # macOS 隱私保護（TCC）擋住背景程式讀寫的位置；排程的執行檔、工作目錄、log 都不能放這些地方。
 TCC_HOME_DIRS = ("Desktop", "Documents", "Downloads")
@@ -169,6 +176,23 @@ def local_times(
     return sorted(out)
 
 
+def schedule_environment(environ: Mapping[str, str], *, cwd: Path | None = None) -> dict[str, str]:
+    """安裝當下設了的 SCHEDULE_ENV_KEYS，換成絕對路徑。
+
+    相對路徑以安裝當下的工作目錄為準（和 paths.py、log_dir() 的規則一樣），因為排程的
+    工作目錄是執行區。只展開 ~、補成絕對路徑，不解析 symlink：tick 讀到後照原本的規則解析。
+    沒設或空字串的不寫，排程端會用和安裝端一樣的預設。
+    """
+    base = cwd if cwd is not None else Path.cwd()
+    out: dict[str, str] = {}
+    for key in SCHEDULE_ENV_KEYS:
+        value = environ.get(key)
+        if value:
+            path = Path(value).expanduser()
+            out[key] = str(path if path.is_absolute() else base / path)
+    return out
+
+
 def build_plist(
     *,
     executable: Path,
@@ -176,14 +200,22 @@ def build_plist(
     logs: Path,
     times: Sequence[tuple[int, int]],
     path_env: str = LAUNCHD_PATH,
+    env: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
-    """plist 的內容。沒有 RunAtLoad／KeepAlive：載入時不會執行，也不會常駐。"""
+    """plist 的內容。沒有 RunAtLoad／KeepAlive：載入時不會執行，也不會常駐。
+
+    env 只能是 SCHEDULE_ENV_KEYS 裡的路徑變數（schedule_environment 的結果）。
+    """
+    extra = dict(env or {})
+    unknown = sorted(set(extra) - set(SCHEDULE_ENV_KEYS))
+    if unknown:
+        raise ValueError(f"plist 只能多寫 HOUSE_WATCH_* 路徑變數，不能寫：{', '.join(unknown)}")
     return {
         "Label": LABEL,
         "ProgramArguments": [str(executable), "tick"],
         "StartCalendarInterval": [{"Hour": hour, "Minute": minute} for hour, minute in times],
         "WorkingDirectory": str(working_dir),
-        "EnvironmentVariables": {"PATH": path_env, "LANG": "en_US.UTF-8"},
+        "EnvironmentVariables": {"PATH": path_env, "LANG": "en_US.UTF-8", **extra},
         "StandardOutPath": str(logs / LAUNCHD_STDOUT),
         "StandardErrorPath": str(logs / LAUNCHD_STDERR),
         "RunAtLoad": False,
@@ -223,8 +255,15 @@ def install_schedule(
     uid: int,
     dev_root: Path | None = None,
     home: Path | None = None,
+    env: Mapping[str, str] | None = None,
+    config_path: Path | None = None,
+    data_dir: Path | None = None,
 ) -> InstallResult:
-    """寫 plist；不執行 launchctl。執行檔不存在或位置不對時丟 ConfigError。"""
+    """寫 plist；不執行 launchctl。執行檔不存在或位置不對時丟 ConfigError。
+
+    env：寫進 plist 的路徑變數（schedule_environment）。config_path、data_dir：tick 會讀寫的
+    設定檔與資料夾，只檢查隱私保護的位置（不檢查開發資料夾）。
+    """
     executable = layout.executable
     if not executable.is_file():
         raise ConfigError(
@@ -234,8 +273,16 @@ def install_schedule(
         reason = protected_location(path, dev_root=dev_root, home=home)
         if reason is not None:
             raise ConfigError(f"{what}{reason}，排程不能用")
+    for what, maybe in (("設定檔", config_path), ("資料夾", data_dir)):
+        if maybe is None:
+            continue
+        reason = protected_location(maybe, home=home)
+        if reason is not None:
+            raise ConfigError(f"{what}{reason}，排程不能用")
     times = local_times(calendar_hours(window, every_hours), today=today, local_tz=local_tz)
-    content = build_plist(executable=executable, working_dir=layout.root, logs=logs, times=times)
+    content = build_plist(
+        executable=executable, working_dir=layout.root, logs=logs, times=times, env=env
+    )
     logs.mkdir(parents=True, exist_ok=True)  # launchd 不會自己建 log 資料夾
     target = plist_path(agents_dir)
     payload = plistlib.dumps(content, fmt=plistlib.FMT_XML, sort_keys=True)
@@ -277,6 +324,8 @@ def run_schedule(*, action: str, every_hours: int | None = None) -> int:
     settings = _load(ui)
     schedule = settings.public.schedule
     local_tz = dt.datetime.now().astimezone().tzinfo or TAIPEI
+    config_file, explicit = paths.settings_file()
+    env = schedule_environment(os.environ)
     result = install_schedule(
         window=schedule.window_hours,
         every_hours=every_hours or schedule.probe_every_hours,
@@ -287,10 +336,15 @@ def run_schedule(*, action: str, every_hours: int | None = None) -> int:
         today=dt.datetime.now(TAIPEI).date(),
         uid=uid,
         dev_root=source_checkout(),
+        env=env,
+        config_path=config_file if explicit or config_file.is_file() else None,
+        data_dir=settings.data_dir,
     )
     times = "、".join(f"{h:02d}:{m:02d}" for h, m in _times_of(result.content))
     ui.say(f"{'已寫入' if result.changed else '沒有變動'}：{result.plist}")
     ui.say(f"執行時間（本機時間）：{times}；只寫檔，沒有載入或啟動任何東西")
+    if env:
+        ui.say("排程沿用的路徑：" + "；".join(f"{key}={value}" for key, value in env.items()))
     ui.say("部署時由主 session 執行（已載入過的話先執行第一行）：")
     for command in result.commands:
         ui.say(f"  {command}")

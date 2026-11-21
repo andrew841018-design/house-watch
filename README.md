@@ -64,6 +64,11 @@ RT=~/Library/Application\ Support/house_watch_runtime/bin/house-watch
 - `deploy-local` 用 `git archive` 取出那個 ref（不讀工作區），套件版本照 `uv.lock`，
   Python 用 uv 管理、裝在執行區裡（Homebrew 升級 Python 不會弄壞排程）。
 - `schedule install` 只寫檔，不載入也不啟動；它會印出要執行的 `launchctl bootstrap gui/<uid> …`。
+- 排程不會帶著你終端機的環境變數。`schedule install` 會把安裝當下設了的
+  `HOUSE_WATCH_CONFIG`、`HOUSE_WATCH_DATA_DIR`、`HOUSE_WATCH_LOG_DIR`、`HOUSE_WATCH_RUNTIME_DIR`
+  換成絕對路徑寫進 plist，所以要用和平常一樣的環境變數執行它。改了這些路徑，要重新執行一次。
+- 執行區、log、設定檔、資料夾都不能放在 `~/Desktop`、`~/Documents`、`~/Downloads` 或外接磁碟：
+  macOS 的隱私保護會擋住背景程式，`schedule install` 會直接拒絕。
   時段是公開設定的 `[schedule] window_hours`（台北時間），預設每 3 小時一次（08、11、14、17、20、23 點），
   可以用 `--every-hours N` 改；安裝時換成這台電腦的本機時間。
 - Mac 睡眠時錯過的那一輪，醒來後 launchd 會補跑一次；關機時錯過的不補，下一個時段自然補上。

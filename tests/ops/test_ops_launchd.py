@@ -161,6 +161,91 @@ def test_schedule_command_end_to_end(monkeypatch, tmp_path, capsys, no_subproces
     assert "launchctl bootout gui/" in capsys.readouterr().out
 
 
+# ---------------------------------------------------------------- 排程沿用安裝當下的路徑
+
+SCHEDULE_KEYS = (
+    "HOUSE_WATCH_CONFIG",
+    "HOUSE_WATCH_DATA_DIR",
+    "HOUSE_WATCH_LOG_DIR",
+    "HOUSE_WATCH_RUNTIME_DIR",
+)
+
+
+def test_schedule_command_carries_the_installer_paths_into_the_plist(
+    monkeypatch, tmp_path, capsys, no_subprocess
+):
+    """排程跑 tick 時沒有安裝當下的環境變數。四個路徑沒寫進 plist 的話，tick 會改用預設位置：
+    讀另一份設定、寫另一個資料夾，等於換了一套資料（11/21 上線時手動補過）。"""
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setenv(launchd.ENV_RUNTIME_DIR, str(tmp_path / "runtime"))
+    monkeypatch.setenv("HOUSE_WATCH_LOG_DIR", str(tmp_path / "logs"))
+    monkeypatch.setattr(launchd, "launch_agents_dir", lambda: tmp_path / "LaunchAgents")
+    monkeypatch.setattr(launchd, "TCC_HOME_DIRS", ())  # pytest 的暫存資料夾可能在 ~/Desktop
+    monkeypatch.setattr(launchd, "source_checkout", lambda: None)
+    _fake_runtime(tmp_path / "runtime")
+    assert launchd.run_schedule(action="install", every_hours=None) == 0
+    capsys.readouterr()
+    written = plistlib.loads(launchd.plist_path(tmp_path / "LaunchAgents").read_bytes())
+    env = written["EnvironmentVariables"]
+    assert {key: env.get(key) for key in SCHEDULE_KEYS} == {
+        key: os.environ[key] for key in SCHEDULE_KEYS
+    }
+    assert env["PATH"] == launchd.LAUNCHD_PATH and env["LANG"] == "en_US.UTF-8"
+
+
+def test_schedule_environment_writes_set_paths_as_absolute(tmp_path):
+    """相對路徑以安裝當下的工作目錄為準（排程的工作目錄是執行區）；~ 展開；
+    沒設、空字串的不寫（排程端會用和安裝端一樣的預設）；其他變數一律不帶。"""
+    environ = {
+        "HOUSE_WATCH_CONFIG": "conf/settings.toml",
+        "HOUSE_WATCH_DATA_DIR": str(tmp_path / "data"),
+        "HOUSE_WATCH_LOG_DIR": "~/hw-logs",
+        "HOUSE_WATCH_RUNTIME_DIR": "",
+        "HOUSE_WATCH_OTHER": "x",
+        "PATH": "/opt/other/bin",
+    }
+    assert launchd.schedule_environment(environ, cwd=tmp_path / "work") == {
+        "HOUSE_WATCH_CONFIG": str(tmp_path / "work" / "conf" / "settings.toml"),
+        "HOUSE_WATCH_DATA_DIR": str(tmp_path / "data"),
+        "HOUSE_WATCH_LOG_DIR": str(Path("~/hw-logs").expanduser()),
+    }
+
+
+def test_install_writes_the_given_paths_into_the_plist(tmp_path, no_subprocess):
+    env = {
+        "HOUSE_WATCH_CONFIG": str(tmp_path / "conf" / "settings.toml"),
+        "HOUSE_WATCH_DATA_DIR": str(tmp_path / "data"),
+    }
+    result = _install(tmp_path, env=env)
+    written = plistlib.loads(result.plist.read_bytes())["EnvironmentVariables"]
+    assert written == {"PATH": launchd.LAUNCHD_PATH, "LANG": "en_US.UTF-8", **env}
+
+
+def test_plist_only_takes_the_house_watch_paths(tmp_path):
+    with pytest.raises(ValueError, match="PATH"):
+        launchd.build_plist(
+            executable=tmp_path / "house-watch",
+            working_dir=tmp_path,
+            logs=tmp_path,
+            times=[(8, 0)],
+            env={"PATH": "/opt/other/bin"},
+        )
+
+
+def test_install_refuses_config_or_data_in_protected_locations(tmp_path, no_subprocess):
+    """設定檔、資料夾也是 tick 要讀寫的；放在隱私保護的位置，排程會跑不起來。"""
+    cases = [
+        ("config_path", "home/Desktop/settings.toml", "^設定檔在 ~/Desktop"),
+        ("data_dir", "home/Documents/data", "^資料夾在 ~/Documents"),
+        ("data_dir", "/Volumes/disk/data", "^資料夾在 /Volumes"),
+    ]
+    for index, (param, where, pattern) in enumerate(cases):
+        base = tmp_path / str(index)  # _install 的 home 是 base/home
+        with pytest.raises(ConfigError, match=pattern):
+            _install(base, **{param: base / where})
+        assert not (base / "LaunchAgents").exists()
+
+
 def test_install_and_logging_do_not_block_the_first_tick(monkeypatch, tmp_path):
     """資料夾在第一次 init 之前只能是空的：log、執行區、plist 都不能放進資料夾。"""
     data = Path(os.environ["HOUSE_WATCH_DATA_DIR"])
