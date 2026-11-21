@@ -488,7 +488,7 @@ def deploy_local(
                 "--frozen",
                 "--no-dev",
                 "--no-emit-project",
-                "--no-hashes",
+                "--no-hashes",  # TODO(deferred.md 2026-11-21 SA-8)：改成安裝時驗證雜湊
                 "--project",
                 str(build),
                 "--output-file",

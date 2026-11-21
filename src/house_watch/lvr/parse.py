@@ -371,6 +371,7 @@ def build_parkings(
         areas = [None] * declared
     else:
         if (main.get("車位類別") or "").strip() or total_price or total_area:
+            # TODO(deferred.md 2026-11-21 P-6)：車位數 0 但有車位總價時，政府單價有沒有扣車位待查證
             flags.add("parking_without_count")
         return [], flags
 

@@ -618,6 +618,7 @@ def run_tick(
     export_step: Callable[[cli.StepContext], cli.StepOutcome] | None = None,
 ) -> int:
     """`house-watch tick` 的入口（cli.ENTRY_POINTS["tick"]）。參數只給測試用。"""
+    # TODO(deferred.md 2026-11-21 SA-3)：HTTP 讀取以外的卡住沒有看門狗
     ui = cli.Ui()
     clock = clock or SystemClock()
     with tick_logging(log_directory, mask=ui.mask, console=console) as log:
