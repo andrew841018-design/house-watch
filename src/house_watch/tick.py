@@ -595,7 +595,11 @@ class Tick:
                 plan = self._plan(conn, guard)  # 用剩下的時間重新挑
             self._sources(conn, guard, plan)
 
-        if self._stopped(guard) and self.report.stopped in STOP_ALL:
+        # 事後審查 CX-6：先記到 deadline、之後才睡著時，第一次記下的原因不是 STOP_ALL，
+        # 所以也要看「現在」的問題。
+        if self._stopped(guard) and (
+            self.report.stopped in STOP_ALL or guard.problem() in STOP_ALL
+        ):
             self.log.warning("這一輪不匯出、不發布，留給下一輪")
             return
         result = self._step("export", self._export_step, conn, guard.deadline)

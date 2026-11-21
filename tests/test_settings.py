@@ -42,7 +42,7 @@ def test_default_toml_loads_with_both_areas():
     assert set(public.freshness_hours) == set(public.sources) | {"lvr", "doorindex"}
     assert all(source.min_interval_s >= 3 for source in public.sources.values())
     assert public.tls.relax_strict_hosts == []
-    assert public.http.user_agent is None  # 待擁有者決定
+    assert public.http.user_agent is None  # 擁有者已決定（PLAN_v2 §4 第 2 項）：固定 house-watch/<版本>，不能設定
 
 
 def test_default_toml_has_no_criteria_keys():

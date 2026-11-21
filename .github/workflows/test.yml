@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      # 第一次推上 GitHub 之前，要核對這個 commit SHA 確實是 actions/checkout v4.2.2（本機離線寫入，未連網核對）。
+      # 已核對（2026-11-21，gh api）：這個 commit SHA 就是 actions/checkout v4.2.2 的 tag。
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false

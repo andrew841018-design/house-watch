@@ -11,7 +11,8 @@ ctx 是 cli.StepContext（settings、conn、data、clock、deadline、areas、so
 - 完整掃描：今天（台北日期）這個範圍還沒有有效的完整掃描。今天已經試過而失敗的，只有
   暫時性的錯誤（5xx、逾時、TLS）才再試，一天最多 FULL_ATTEMPTS_PER_DAY 次；
   無效（count_short 等）或預算不夠的，今天不再試，改做探測。
-- 探測：今天已經有有效的完整掃描，而且距上一次掃描 ≥ probe_every_hours 小時。
+- 探測：今天已經有有效的完整掃描，或今天的完整掃描無效、預算不夠而不再試（見上一條），
+  而且距上一次掃描 ≥ probe_every_hours 小時。
   用「最新」排序讀前 probe_pages 頁；只更新「最後看到」與新物件，不參與下架計數。
   排序語意還沒確認的站（probe_sort 是 None）不探測。上次有效完整掃描只有 ≤ K 頁的小站，
   每一輪都做完整掃描（r4 §3.4 例外）。

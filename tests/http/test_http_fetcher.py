@@ -465,13 +465,15 @@ def test_policies_come_from_settings_and_adapters(tmp_path):
     assert cthouse.robots_urls == ("https://buy.cthouse.com.tw/robots.txt",)
     assert cthouse.min_interval_s >= 4
     assert cthouse.min_interval_s >= settings.sources["cthouse"].min_interval_s
-    assert cthouse.daily_cap == daily_cap_of(settings.sources["cthouse"])
+    assert cthouse.daily_cap == 300  # 擁有者定的中信每日上限（PLAN_v2 §4）；不和被測函式自己比
 
 
 def test_daily_cap_is_read_from_config_not_hard_coded():
     assert daily_cap_of(types.SimpleNamespace(max_requests_day=321)) == 321
-    assert daily_cap_of(types.SimpleNamespace()) is None
-    assert daily_cap_of(types.SimpleNamespace(max_requests_day=0)) is None
+    # 事後審查 AT-7：讀不到或不是正整數時是設定錯誤，不能當成「不設上限」。
+    for bad in (types.SimpleNamespace(), types.SimpleNamespace(max_requests_day=0)):
+        with pytest.raises(ValueError):
+            daily_cap_of(bad)
 
 
 # ---------------------------------------------------------------- 解析失敗時留下的回應（R2-12、R3-20）

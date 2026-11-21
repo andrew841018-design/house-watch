@@ -121,15 +121,15 @@ class SourcePolicy:
     robots_urls: tuple[str, ...] = ()
 
 
-def daily_cap_of(config: SourceConfig) -> int | None:
-    """設定的每日請求上限。
+def daily_cap_of(config: SourceConfig) -> int:
+    """設定的每日請求上限（PLAN_v2 §4：擁有者定的禮貌上限，SourceConfig 必填）。
 
-    PLAN_v2 §4 要求寫進 default.toml，但契約 C9 的 SourceConfig 還沒有這個鍵；
-    WP0 加上 `max_requests_day` 之後這裡自動生效。在那之前不設每日上限
-    （每次完整掃描仍受 max_requests_full 限制，由 WP6 執行）。
+    讀不到或不是正整數就是設定錯誤，丟 ValueError；不能當成「不設上限」（事後審查 AT-7）。
     """
     value = getattr(config, "max_requests_day", None)
-    return value if isinstance(value, int) and value > 0 else None
+    if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+        raise ValueError("來源設定缺少每日請求上限（max_requests_day）")
+    return value
 
 
 def policies_from_settings(settings: Settings, adapters: Iterable[Adapter]) -> dict[str, SourcePolicy]:

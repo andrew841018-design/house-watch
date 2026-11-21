@@ -454,3 +454,22 @@ def test_tick_refuses_to_start_without_a_settings_file(tmp_path, monkeypatch):
     code = tick.run_tick(clock=FakeClock(START), log_directory=tmp_path / "logs", console=False)
     assert code == int(ExitCode.CONFIG)
     assert not data.exists()
+
+
+def test_a_sleep_after_the_deadline_still_skips_export(tmp_path, steps, monkeypatch):
+    """事後審查 CX-6：先記到 deadline、之後電腦睡著（牆上時鐘跳走）時，最後的判斷要看「現在」
+    的問題，不能只看第一次記下的原因；睡著過就不匯出、不發布。"""
+    state = {"phase": 0}
+    real = tick.Guard.problem
+
+    def fake(self):
+        if state["phase"] == 0:
+            return real(self)
+        state["phase"] += 1
+        return "deadline" if state["phase"] == 2 else "slept"
+
+    monkeypatch.setattr(tick.Guard, "problem", fake)
+    steps.effects["sources"] = lambda: state.__setitem__("phase", 1)
+    assert steps.run(tmp_path) == 1
+    assert "export" not in steps.calls and steps.published == []
+    assert json.loads(_kv(tick.KV_LAST_RUN))["stopped"] == "deadline"
