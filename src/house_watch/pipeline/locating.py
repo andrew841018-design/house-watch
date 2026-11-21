@@ -17,9 +17,11 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
+import shapely
+
 from house_watch.geo import areas
 from house_watch.geo.community import CommunityLookup, OsmNames, SiteObservation
-from house_watch.geo.doorindex import DoorIndex
+from house_watch.geo.doorindex import DECISIVE_M, DoorIndex
 from house_watch.geo.locate import LocEvidence, area_metrics, decide
 from house_watch.geo.proj import wgs84_to_tm2
 from house_watch.models import AreaKind, ListingFacts, Location, Precision, TxFacts
@@ -154,7 +156,23 @@ class Locator:
         # 已經由區界多邊形給了 in_district，路段精度沒有，用定位的區。
         if area.kind == AreaKind.BUFFER or "in_district" not in out:
             out["in_district"] = True
+        elif (
+            out.get("in_district") is False
+            and loc.lat is not None
+            and loc.lon is not None
+            and self._near_district_edge(loc.lon, loc.lat, area.id)
+        ):
+            # 地址定位的區在這個區域裡，點只在區界外不到 DECISIVE_M：座標誤差比區界小，
+            # 照地址算在區內（事後審查 CE-6；不然網頁硬判 district_out）。
+            out["in_district"] = True
         return out
+
+    def _near_district_edge(self, lon: float, lat: float, area_id: str) -> bool:
+        polygon = self.geo.area(area_id).district
+        if polygon is None:
+            return False
+        x, y = wgs84_to_tm2(lon, lat)
+        return float(shapely.distance(polygon, shapely.Point(x, y))) <= DECISIVE_M
 
 
 def best_location(locations: list[Location]) -> Location:
