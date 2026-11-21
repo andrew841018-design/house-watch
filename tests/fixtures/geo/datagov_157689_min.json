@@ -1,0 +1,34 @@
+{
+  "success": true,
+  "result": {
+    "datasetId": 157689,
+    "title": "桃園市門牌位置坐標資料",
+    "distribution": [
+      {
+        "resourceDescription": "桃園市門牌位置坐標資料(115年8月)",
+        "resourceFormat": "CSV",
+        "resourceDownloadUrl": "https://opendata.tycg.gov.tw/api/dataset/00000000-0000-0000-0000-000000000000/resource/aaaaaaaa-0000-0000-0000-000000000008/download"
+      },
+      {
+        "resourceDescription": "桃園市門牌位置座標資料（115年09月） ",
+        "resourceFormat": "CSV",
+        "resourceDownloadUrl": "https://opendata.tycg.gov.tw/api/dataset/00000000-0000-0000-0000-000000000000/resource/aaaaaaaa-0000-0000-0000-000000000009/download"
+      },
+      {
+        "resourceDescription": "桃園市門牌位置坐標資料(115年10月)",
+        "resourceFormat": "CSV",
+        "resourceDownloadUrl": "https://opendata.tycg.gov.tw/api/dataset/00000000-0000-0000-0000-000000000000/resource/aaaaaaaa-0000-0000-0000-000000000010/download"
+      },
+      {
+        "resourceDescription": "桃園市門牌位置坐標資料(114年12月)",
+        "resourceFormat": "CSV",
+        "resourceDownloadUrl": "https://opendata.tycg.gov.tw/api/dataset/00000000-0000-0000-0000-000000000000/resource/aaaaaaaa-0000-0000-0000-000000000012/download"
+      },
+      {
+        "resourceDescription": "桃園市門牌位置坐標資料(115年11月)",
+        "resourceFormat": "JSON",
+        "resourceDownloadUrl": "https://opendata.tycg.gov.tw/api/dataset/00000000-0000-0000-0000-000000000000/resource/aaaaaaaa-0000-0000-0000-000000000011/download"
+      }
+    ]
+  }
+}

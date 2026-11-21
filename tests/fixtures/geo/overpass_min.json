@@ -1,0 +1,16 @@
+{
+  "version": 0.6,
+  "generator": "合成樣本",
+  "osm3s": {"timestamp_osm_base": "2026-01-01T00:00:00Z", "copyright": "ODbL 1.0, © OpenStreetMap contributors（合成樣本）"},
+  "elements": [
+    {"type": "way", "id": 101, "center": {"lat": 25.0010000, "lon": 121.2910000}, "tags": {"building": "apartments", "name": "示範晴空社區"}},
+    {"type": "way", "id": 102, "center": {"lat": 25.0011000, "lon": 121.2912000}, "tags": {"building": "residential", "name": "示範 晴空"}},
+    {"type": "way", "id": 103, "center": {"lat": 25.0050000, "lon": 121.2950000}, "tags": {"landuse": "residential", "name": "示範雲頂"}},
+    {"type": "way", "id": 104, "center": {"lat": 24.9700000, "lon": 121.2300000}, "tags": {"building": "yes", "name": "示範雲頂"}},
+    {"type": "way", "id": 105, "center": {"lat": 25.0020000, "lon": 121.2930000}, "tags": {"building": "school", "amenity": "school", "name": "示範國小"}},
+    {"type": "relation", "id": 106, "center": {"lat": 25.0030000, "lon": 121.2940000}, "tags": {"building": "apartments", "name": "示範湖畔"}},
+    {"type": "way", "id": 107, "center": {"lat": 25.0040000, "lon": 121.2945000}, "tags": {"building": "apartments", "shop": "convenience", "name": "示範商店"}},
+    {"type": "way", "id": 108, "tags": {"building": "apartments", "name": "沒有中心點"}},
+    {"type": "way", "id": 109, "center": {"lat": 25.0060000, "lon": 121.2960000}, "tags": {"building": "apartments"}}
+  ]
+}
