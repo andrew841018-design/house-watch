@@ -146,7 +146,8 @@ def test_folder_with_marker_but_no_database_exits_2(tmp_path, steps):
 
 
 def test_daily_jobs_run_first_without_a_large_source(tmp_path, steps):
-    write_config("[sources.rakuya]\nmax_requests_full = 100\n")  # 估計約 8 分，不算大的
+    # 估計各約 8 分，都不算大的（中信的單次上限 11/21 調成 220，不壓低的話會被當成大的）
+    write_config("[sources.rakuya]\nmax_requests_full = 100\n[sources.cthouse]\nmax_requests_full = 100\n")
     assert steps.run(tmp_path) == 0
     assert steps.calls == ["doorindex", "lvr", "sources", "export"]
 

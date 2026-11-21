@@ -156,3 +156,16 @@ def test_export_paths_kv_keys_and_scan_statuses_match_wp7a(tmp_path):
 def test_vendor_files_are_kept_byte_for_byte():
     text = (ROOT / ".gitattributes").read_text(encoding="utf-8")
     assert re.search(r"^web/vendor/\*\* -text$", text, re.M)
+
+
+# 2026-11-21 正式實掃（或 LIVE_CHECK.md）各來源「最大的一區」完整掃描要讀的頁數。
+MEASURED_FULL_PAGES = {"cthouse": 179, "hbhousing": 64, "rakuya": 286, "etwarm": 11, "century21": 19}
+
+
+@pytest.mark.parametrize("source", sorted(MEASURED_FULL_PAGES))
+def test_full_scan_cap_leaves_twenty_percent_headroom(source):
+    """事後審查 AT-5、CE-3：單次完整掃描上限小於實際頁數時，那一區每天都 budget_exhausted，
+    永遠沒有有效的完整掃描（不會判新上架、下架）。上限至少比實測多兩成，也不能超過每日上限。"""
+    config = load_public().sources[source]
+    need = -(-MEASURED_FULL_PAGES[source] * 12 // 10)  # 無條件進位的 1.2 倍
+    assert need <= config.max_requests_full <= config.max_requests_day

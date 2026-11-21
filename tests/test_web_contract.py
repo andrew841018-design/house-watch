@@ -130,3 +130,29 @@ def test_seed_records_are_valid_exports(case):
     rec = {key: value for key, value in case["rec"].items() if key != "area"}
     RECORD_MODELS[case["kind"]].model_validate(rec)
     assert case["rec"]["area"] == case["profile"]["area"]
+
+
+def _rule_constant(name: str) -> float:
+    found = re.search(rf"^\s*{name}:\s*([0-9.]+),", RULES_JS.read_text(encoding="utf-8"), re.M)
+    assert found, f"rules.js 的 RULE_CONSTANTS 缺少 {name}"
+    return float(found.group(1))
+
+
+def test_price_drop_step_matches_python():
+    """事後審查 CE-1：網頁的降價徽章和 Python 的 price_summary 用同一個「1 萬」門檻（R3-22）。"""
+    from house_watch.pipeline.versions import PRICE_MIN_STEP_YUAN
+
+    assert _rule_constant("PRICE_MIN_STEP_YUAN") == PRICE_MIN_STEP_YUAN
+
+
+def test_drive_options_are_spaced_by_the_near_band():
+    """事後審查 AT-10：「接近車程門檻」寫成固定寬度，選項間距必須等於它，否則下一檔對不上。"""
+    from house_watch.settings import load_public
+
+    band = _rule_constant("DRIVE_NEAR_BAND_MIN")
+    for area in load_public().areas:
+        options = area.options.drive_min_options if area.options else None
+        if options:
+            assert [b - a for a, b in zip(options, options[1:], strict=False)] == [band] * (
+                len(options) - 1
+            ), area.id

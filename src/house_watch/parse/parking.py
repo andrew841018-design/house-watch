@@ -13,8 +13,10 @@
 - 「機械升降平面」比「機械」長，所以算升降平面，不會被判成機械（R1-12 反例 1）。
 - 「坡道機械式平移大車位」：「平移」是機械，「平」不會被當成平面。
 - 「坡道-平面」「(坡道)平面」這類拆開的寫法先合併再比對。
-- 多個車位（`combine`）：類型都一樣 → 該類型；有任何平面（含已經是 mixed_with_flat 的值）
-  → mixed_with_flat；有看不懂的 → unknown；其餘 → mixed_no_flat。
+- 多個車位（`combine`）：類型都一樣 → 該類型；有平面也有機械（含已經是 mixed_* 的值）
+  → mixed_with_flat；只有出入方式不同的平面 → flat_unknown_access；平面加看不懂的、
+  或機械加看不懂的 → unknown；其餘 → mixed_no_flat。mixed_with_flat 一定含機械：網頁在
+  接受機械時直接判符合（事後審查 CE-2）。
 - 「無車位」「無」→ none。看不懂 → unknown。
 - 公有車位（抽籤、輪停）由 `is_public` 判斷，另外標示（R1-12 第 4 點）。
 """
@@ -30,6 +32,8 @@ FLAT_TYPES = frozenset(
 # 合併時「含平面」的值：單一平面類型，或已經合併過、含平面的 mixed_with_flat。
 # 不能把 mixed_with_flat 加進 FLAT_TYPES：成交單價的 district_flat 中位數層用 FLAT_TYPES 挑樣本。
 _HAS_FLAT = FLAT_TYPES | {Parking.MIXED_WITH_FLAT}
+# 合併時「含機械」的值：機械，或已經合併過、含機械的 mixed_*。
+_HAS_MECHANICAL = frozenset({Parking.MECHANICAL, Parking.MIXED_NO_FLAT, Parking.MIXED_WITH_FLAT})
 
 PHRASES: tuple[tuple[str, Parking], ...] = (
     ("機械升降平面", Parking.LIFT_FLAT),
@@ -99,7 +103,11 @@ def combine(types: list[Parking]) -> Parking:
     if Parking.NONE in distinct:
         return Parking.UNKNOWN  # 同時寫了沒有車位與某種車位，互相矛盾
     if distinct & _HAS_FLAT:
-        return Parking.MIXED_WITH_FLAT
+        if distinct & _HAS_MECHANICAL:
+            return Parking.MIXED_WITH_FLAT
+        if Parking.UNKNOWN in distinct:
+            return Parking.UNKNOWN  # 看不懂的那個不一定是機械
+        return Parking.FLAT_UNKNOWN_ACCESS  # 只有出入方式不同的平面
     if Parking.UNKNOWN in distinct:
         return Parking.UNKNOWN
     return Parking.MIXED_NO_FLAT

@@ -80,8 +80,10 @@ role = "marker"
 # 各站每日上限：樂屋網 650、中信 300、其他站 150 次以內。
 # - max_requests_day：這個來源每天（台北日期）最多幾個請求，含 robots.txt、轉址、探測、詳細頁。
 # - max_requests_full：一次完整掃描（一個區域）最多幾個請求，超過就判無效（budget_exhausted）。
-#   依實際頁數估（tests/fixtures/sources/LIVE_CHECK.md）：桃園區中信約 108 頁、住商約 53 頁、
-#   東森約 11 頁＋批次、21 世紀約 11 頁；樂屋網桃園區 286 頁、中壢區 232 頁。
+#   依實際頁數估（tests/fixtures/sources/LIVE_CHECK.md；2026-11-21 正式實掃）：中信桃園區 109 頁、
+#   中壢區約 179 頁（3,578 筆）；住商 54／64 頁；東森約 11／8 頁＋批次；21 世紀 11／19 頁；
+#   樂屋網桃園區 286 頁、中壢區約 232 頁。單次上限至少比最大的一區多留兩成（事後審查 AT-5、CE-3），
+#   不夠時該區每天都會 budget_exhausted、永遠沒有有效的完整掃描。
 #   樂屋網兩區一次完整掃描合計約 518 頁，所以每日上限調到 650（PLAN_v2 §4 第 6 項），
 #   留給探測與詳細頁；預算不夠的那一區當天不開始（先用上次頁數估），上次完整掃描較舊的區域先做。
 # - probe_pages：每 3 小時的探測讀前幾頁；detail_cap：每一輪最多幾個詳細頁。
@@ -93,7 +95,7 @@ enabled = true
 publish = true
 min_interval_s = 4
 max_requests_day = 300
-max_requests_full = 150
+max_requests_full = 220
 probe_pages = 2
 detail_cap = 10
 
@@ -111,7 +113,7 @@ enabled = true
 publish = true
 min_interval_s = 4
 max_requests_day = 650
-max_requests_full = 300
+max_requests_full = 350
 probe_pages = 2
 detail_cap = 10
 

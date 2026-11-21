@@ -118,6 +118,8 @@ export const RULE_CONSTANTS = deepFreeze({
   COMPS_DEFAULT_MONTHS: 12,
   // PLAN §4：新上架是首次出現後 72 小時內。
   NEW_BADGE_HOURS: 72,
+  // R3-22：價格差不到 1 萬不算一次變動；降價徽章和「首次 X 萬」也照這條（和 Python 一致）。
+  PRICE_MIN_STEP_YUAN: 10000,
 });
 
 export const PROFILE_STORAGE_KEY = "house-watch:profiles:v1";
@@ -1056,7 +1058,12 @@ export function listingBadges(group, nowMs) {
   const dropped = members.some((member) => {
     const price = nonNegInt(member.price);
     const first = nonNegInt(member.price_first);
-    return member.status === "active" && price !== null && first !== null && price < first;
+    return (
+      member.status === "active" &&
+      price !== null &&
+      first !== null &&
+      first - price >= RULE_CONSTANTS.PRICE_MIN_STEP_YUAN
+    );
   });
   if (dropped) badges.push("price_drop");
   const facts = isObject(group.facts) ? group.facts : {};

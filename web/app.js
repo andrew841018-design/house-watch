@@ -768,7 +768,7 @@ function memberLinks(group) {
       const price = isNum(member.price) ? `${wanText(member.price)} 萬` : "價格不明";
       const dropAt = typeof member.price_drop_at === "string" ? Date.parse(member.price_drop_at) : Number.NaN;
       const drop =
-        isNum(member.price) && isNum(member.price_first) && member.price < member.price_first
+        isNum(member.price) && isNum(member.price_first) && member.price_first - member.price >= RULE_CONSTANTS.PRICE_MIN_STEP_YUAN
           ? `（首次 ${wanText(member.price_first)} 萬${Number.isFinite(dropAt) ? `，${timeText(dropAt).slice(0, 10)} 降價` : ""}）`
           : "";
       const original = isNum(member.site_original_price) ? `（站方標示原價 ${wanText(member.site_original_price)} 萬）` : "";
@@ -1548,7 +1548,7 @@ function renderEditor(formFor) {
     state.profiles.length ? list : el("p", { class: "muted", text: "還沒有條件。網頁不附任何預設條件，請自己新增。" }),
     button("新增一組條件", () => renderEditor(null), { class: "primary" }),
     el("h3", { text: "保存方式" }),
-    el("p", { class: "small", text: "條件只存在你的瀏覽器或你產生的連結裡，網頁不會把它送到任何地方。" }),
+    el("p", { class: "small", text: "條件只存在你的瀏覽器或你產生的連結裡，網頁不會自己送出去；只有按 591、信義的搜尋按鈕時，會把部分條件放進那個網站的搜尋網址。" }),
     el(
       "div",
       { class: "actions" },

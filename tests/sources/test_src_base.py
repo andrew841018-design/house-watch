@@ -244,7 +244,7 @@ def test_parking_phrase_table(text, kind):
 
 def test_combine_parking():
     assert combine_parking([Parking.RAMP_FLAT, Parking.RAMP_FLAT]) is Parking.RAMP_FLAT
-    assert combine_parking([Parking.RAMP_FLAT, Parking.UNKNOWN]) is Parking.MIXED_WITH_FLAT
+    assert combine_parking([Parking.RAMP_FLAT, Parking.UNKNOWN]) is Parking.UNKNOWN  # CE-2
     assert combine_parking([Parking.MECHANICAL, Parking.UNKNOWN]) is Parking.UNKNOWN
     assert combine_parking([Parking.MECHANICAL, Parking.MIXED_NO_FLAT]) is Parking.MIXED_NO_FLAT
     assert combine_parking([Parking.MIXED_WITH_FLAT, Parking.MECHANICAL]) is Parking.MIXED_WITH_FLAT

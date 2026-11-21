@@ -482,6 +482,10 @@ test("徽章：新上架看首次出現時間、基準不標；降價只看刊�
     members: [{ ...base.members[0], price: 13200000, price_first: 13200000, site_original_price: 15000000 }],
   };
   assert.ok(!rules.listingBadges(original, now).includes("price_drop"), "站方原價不產生降價");
+  // 事後審查 CE-1：差不到 1 萬不算一次變動（R3-22），和 Python 的 price_summary 同一條規則。
+  const withPrices = (price, first) => ({ ...base, members: [{ ...base.members[0], price, price_first: first }] });
+  assert.ok(!rules.listingBadges(withPrices(12336000, 12340000), now).includes("price_drop"), "只降 4 千不算降價");
+  assert.ok(rules.listingBadges(withPrices(12330000, 12340000), now).includes("price_drop"), "剛好降 1 萬算降價");
 
   const txs = JSON.parse(read("./fixtures/sample_data/tx_taoyuan_core.json")).tx;
   assert.ok(rules.txBadges(txs.find((tx) => tx.serial === "FXTAO0002")).includes("estimated"));

@@ -50,7 +50,7 @@ def test_parse_parking(text, expected):
     ("text", "expected"),
     [
         ("平面式+機械式", P.MIXED_WITH_FLAT),  # 591 的混合寫法
-        ("升降平面、坡道平面", P.MIXED_WITH_FLAT),  # 兩個都是平面，但類型不同
+        ("升降平面、坡道平面", P.FLAT_UNKNOWN_ACCESS),  # 兩個都是平面、類型不同、沒有機械（CE-2）
         ("坡道平面及坡道機械", P.MIXED_WITH_FLAT),
         ("坡道機械、塔式", P.MECHANICAL),  # 類型相同就合成一種
         ("坡道平面×2", P.RAMP_FLAT),
@@ -74,7 +74,13 @@ def test_combine_rules():
     assert combine([P.MECHANICAL, P.MECHANICAL]) == P.MECHANICAL
     assert combine([P.RAMP_FLAT, P.MECHANICAL]) == P.MIXED_WITH_FLAT
     assert combine([P.MECHANICAL, P.UNKNOWN]) == P.UNKNOWN  # 看不懂的那個可能是平面
-    assert combine([P.RAMP_FLAT, P.UNKNOWN]) == P.MIXED_WITH_FLAT
+    # 事後審查 CE-2：mixed_with_flat 的意思是「有平面也有機械」，網頁接受機械時直接判符合。
+    # 平面＋看不懂：另一個不一定是機械 → unknown（待確認），不能變成 mixed_with_flat。
+    assert combine([P.RAMP_FLAT, P.UNKNOWN]) == P.UNKNOWN
+    # 只有出入方式不同的平面（沒有機械）→ flat_unknown_access，網頁照平面的規則判斷。
+    assert combine([P.RAMP_FLAT, P.LIFT_FLAT]) == P.FLAT_UNKNOWN_ACCESS
+    assert combine([P.GROUND_FLAT, P.FLAT_UNKNOWN_ACCESS]) == P.FLAT_UNKNOWN_ACCESS
+    assert parse_parking("坡道平面、升降平面") == P.FLAT_UNKNOWN_ACCESS
     assert combine([P.NONE, P.RAMP_FLAT]) == P.UNKNOWN  # 互相矛盾
 
 
