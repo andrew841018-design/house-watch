@@ -1,6 +1,6 @@
 [project]
 name = "house-watch"
-version = "0.1.0"
+version = "0.1.1"
 description = "桃園找房雷達：追蹤開價物件與實價登錄，結果放在靜態網頁上。"
 readme = "README.md"
 requires-python = ">=3.12"
