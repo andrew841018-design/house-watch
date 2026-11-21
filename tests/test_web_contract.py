@@ -156,3 +156,11 @@ def test_drive_options_are_spaced_by_the_near_band():
             assert [b - a for a, b in zip(options, options[1:], strict=False)] == [band] * (
                 len(options) - 1
             ), area.id
+
+
+def test_road_thresholds_match_python():
+    """事後審查 CE-7：Python 依網頁的 0.9／0.1 門檻調整比例的進位，兩邊的門檻要一樣。"""
+    from house_watch.geo.areas import ROAD_IN, ROAD_OUT
+
+    assert _rule_constant("ROAD_IN") == float(ROAD_IN)
+    assert _rule_constant("ROAD_OUT") == float(ROAD_OUT)

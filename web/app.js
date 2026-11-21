@@ -1575,6 +1575,7 @@ function renderEditor(formFor) {
 
 function renderAll() {
   if (!state.meta || !state.data.has(state.areaId)) return;
+  state.today = taipeiDate(Date.now()); // 網頁開著跨過午夜時，屋齡與成交月數也用今天（事後審查 P-8）
   computeResults();
   renderTabsAndFilters();
   renderProfileBar();
@@ -1760,7 +1761,21 @@ async function startSelftest() {
 
 // ---------------------------------------------------------------- 進入點
 
+// 被別的網站用 iframe 嵌入時不顯示編輯器與按鈕，避免誘騙點擊（事後審查 SA-11）。
+// meta CSP 設不了 frame-ancestors，GitHub Pages 也不能加回應標頭，所以在這裡擋。
+function framedByAnotherSite() {
+  try {
+    return window.top !== window.self;
+  } catch {
+    return true; // 跨網域的上層視窗讀不到，就是被嵌入
+  }
+}
+
 if (typeof document !== "undefined") {
-  if (document.documentElement.dataset.page === "selftest") startSelftest();
+  if (framedByAnotherSite()) {
+    document.body.replaceChildren(
+      el("p", { text: "這個網頁不能嵌在別的網站裡。請直接打開它的網址。" }),
+    );
+  } else if (document.documentElement.dataset.page === "selftest") startSelftest();
   else startMain();
 }

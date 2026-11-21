@@ -31,6 +31,7 @@ import hashlib
 import json
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
+from fractions import Fraction
 from importlib.resources import files
 from importlib.resources.abc import Traversable
 from pathlib import Path
@@ -55,6 +56,9 @@ from house_watch.settings import AreaConfig, AreaOptions, PublicConfig, load_pub
 
 BUFFER_QUAD_SEGS = 16  # 畫外推範圍時，四分之一圓用幾段折線
 FRACTION_DIGITS = 4  # 路段比例的小數位數
+# 網頁 rules.js 的 RULE_CONSTANTS.ROAD_IN／ROAD_OUT（比例 ≥ 0.9 算在內、≤ 0.1 算在外）。
+ROAD_IN = Fraction(9, 10)
+ROAD_OUT = Fraction(1, 10)
 
 RawMetrics = tuple[int | None, int | None, bool | None, int | None]
 """一個點的原始指標：(到 near 的最短距離, 到 avoid 的最短距離, 在行政區內, 最小車程檔)。
@@ -185,7 +189,7 @@ class GeoContext:
             for n in geo.options.near_m_options or []:
                 for r in geo.options.rca_m_options or [0]:
                     hits = sum(1 for row in rows if row is not None and _in_buffer(row, n, r, geo))
-                    out[f"n{n}_r{r}"] = round(hits / total, FRACTION_DIGITS)
+                    out[f"n{n}_r{r}"] = road_fraction(hits, total)
             return out
         for m in geo.options.drive_min_options or []:
             hits = sum(
@@ -193,7 +197,7 @@ class GeoContext:
                 for row in rows
                 if row is not None and row[2] and row[3] is not None and row[3] <= m
             )
-            out[str(m)] = round(hits / total, FRACTION_DIGITS)
+            out[str(m)] = road_fraction(hits, total)
         return out
 
     def road_frac_points(
@@ -415,3 +419,19 @@ def load(
     loaded = [_load_area(area, geo_dir, used) for area in config.areas]
     zips = {d.zip: d.name for area in config.areas for d in area.districts}
     return GeoContext(loaded, _version(config.areas, used), zips)
+
+
+def road_fraction(hits: int, total: int) -> float:
+    """門牌點比例，四捨五入到 FRACTION_DIGITS 位，但不跨過網頁的門檻（事後審查 CE-7）。
+
+    例如 8999/9999≈0.89999 四捨五入是 0.9，網頁會判「在範圍內」；實際還差一點，所以輸出 0.8999。
+    1000/9999≈0.10001 捨成 0.1 會被判「在範圍外」，輸出 0.1001。剛好等於門檻的照樣是門檻。
+    """
+    exact = Fraction(hits, total)
+    value = round(hits / total, FRACTION_DIGITS)
+    step = 10**-FRACTION_DIGITS
+    if exact < ROAD_IN <= Fraction(value).limit_denominator(10**FRACTION_DIGITS):
+        value = round(float(ROAD_IN) - step, FRACTION_DIGITS)
+    if exact > ROAD_OUT >= Fraction(value).limit_denominator(10**FRACTION_DIGITS):
+        value = round(float(ROAD_OUT) + step, FRACTION_DIGITS)
+    return value

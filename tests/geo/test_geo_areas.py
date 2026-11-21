@@ -314,3 +314,14 @@ def test_site_geojson_follows_the_contract_roles(ctx):
         if ctx.area(area).kind == AreaKind.DRIVE:
             expected = {"district", "drive", "clip", "marker"}
         assert roles == expected, area
+
+
+def test_road_fraction_rounding_never_crosses_the_page_thresholds():
+    """事後審查 CE-7：比例四捨五入到 4 位時，不能把 0.89999 進位成 0.9（網頁判「在範圍內」）、
+    也不能把 0.10001 捨成 0.1（網頁判「在範圍外」）。剛好等於門檻的照樣是門檻。"""
+    from house_watch.geo.areas import road_fraction
+
+    assert road_fraction(8_999, 9_999) < 0.9
+    assert road_fraction(1_000, 9_999) > 0.1
+    assert road_fraction(9, 10) == 0.9 and road_fraction(1, 10) == 0.1
+    assert road_fraction(1, 3) == 0.3333
