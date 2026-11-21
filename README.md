@@ -10,6 +10,10 @@
 - 個人條件（預算、屋齡、樓層、坪數、距離等）只存在使用者自己的瀏覽器（localStorage 與分享連結的 `#` 片段），Python 程式完全不讀。
 - 公開的抓取範圍刻意比任何個人條件寬，只放寬、不收窄。
 - 本機設定與資料放在 platformdirs 的使用者資料夾，不在 repo 裡。
+- 推送前可以跑 `python3 scripts/pre_push_check.py <敏感值清單> origin/main..HEAD`：清單放在 repo 外、
+  自己維護（一行一個值）；命中時只列出檔名和行號，不印出值。
+- 網站放在 `<帳號>.github.io` 底下時，localStorage 是整個 `<帳號>.github.io` 共用的：同帳號的其他
+  Pages 網站讀得到存在這裡的條件。這個帳號不要開別的 Pages 網站，或改用自己的網域。
 
 ## 開發
 
