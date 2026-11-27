@@ -886,7 +886,7 @@ def cmd_schedule(args: argparse.Namespace, ui: Ui) -> int:
 
 
 def cmd_deploy_local(args: argparse.Namespace, ui: Ui) -> int:
-    return _delegate("deploy_local", ui, ref=args.ref, repo=args.repo)
+    return _delegate("deploy_local", ui, ref=args.ref, repo=args.repo, force=args.force)
 
 
 def _hours(text: str) -> int:
@@ -963,6 +963,7 @@ def build_parser() -> argparse.ArgumentParser:
     deploy = sub.add_parser("deploy-local", help="把 git ref 裝成排程用的固定版本")
     deploy.add_argument("ref", metavar="git-ref", help="要安裝的 tag（或 commit）")
     deploy.add_argument("--repo", default=None, metavar="資料夾", help="程式 repo（預設是目前資料夾）")
+    deploy.add_argument("--force", action="store_true", help="找不到排程用的資料夾或執行區不一致時，照樣安裝")
     deploy.set_defaults(handler=cmd_deploy_local)
     return parser
 

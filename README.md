@@ -56,16 +56,27 @@ uv run python -m house_watch.models > schemas/export.schema.json
 - log 在 `~/Library/Logs/house_watch/tick.log`（每檔 5 MB、保留 5 份）。`launchd.out.log`、
   `launchd.err.log` 只會有 Python 還沒啟動就失敗的錯誤。
 
-排程跑的是**固定版本**，不是開發資料夾（改到一半的程式不會被排程執行）。安裝與升級：
+排程跑的是**固定版本**，不是開發資料夾（改到一半的程式不會被排程執行）。第一次安裝：
 
 ```sh
 uv run pytest                                  # 1. 先確認測試通過
 git tag v0.1.0                                 # 2. 要安裝的版本打 tag
 uv run house-watch deploy-local v0.1.0         # 3. 從 tag 建 wheel，裝進執行區
 RT=~/Library/Application\ Support/house_watch_runtime/bin/house-watch
-"$RT" doctor                                   # 4. 用固定版本檢查
-"$RT" publish --dry-run                        # 5. 看會發布什麼（不寫入、不推送）
-"$RT" schedule install                         # 6. 寫 ~/Library/LaunchAgents/com.house-watch.tick.plist
+"$RT" init                                     # 4. 建資料夾（排程不會自動建）
+"$RT" doctor                                   # 5. 用固定版本檢查
+"$RT" publish --dry-run                        # 6. 看會發布什麼（不寫入、不推送）
+"$RT" schedule install                         # 7. 寫 ~/Library/LaunchAgents/com.house-watch.tick.plist
+```
+
+以上都要用平常的 `HOUSE_WATCH_*` 環境變數執行（執行區不在預設位置時，`RT` 也跟著改）。升級時先停排程，
+裝好再載入：
+
+```sh
+launchctl bootout gui/$(id -u)/com.house-watch.tick   # 1. 停排程（避開整點，先確認 tick.log 最後一行是「結束」）
+uv run house-watch deploy-local v0.1.1                # 2. 換版；排程還在跑就會拒絕
+"$RT" schedule install                                # 3. 重寫排程檔（帶環境變數、每小時）
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.house-watch.tick.plist  # 4. 載入
 ```
 
 - `deploy-local` 用 `git archive` 取出那個 ref（不讀工作區），套件版本照 `uv.lock`，

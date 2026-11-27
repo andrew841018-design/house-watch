@@ -45,7 +45,8 @@ import shutil
 import subprocess
 import sys
 import tarfile
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
@@ -567,26 +568,57 @@ def deploy_local(
     return DeployResult(ref, commit, tagged, version, executable)
 
 
-def _data_run_lock() -> FileLock | None:
-    """資料夾的執行鎖（和 tick、update、export、publish 同一把；事後審查 SA-6）。
-
-    換版（uv tool install --force）和正在跑的 tick 重疊時，同一個程序會新舊模組混用。
-    只有本機設定檔存在、資料夾也存在時才拿得到；否則回 None（呼叫端提醒）。
-    """
-    from house_watch.paths import DataPaths
-    from house_watch.settings import load_settings
-
-    config_file, _explicit = paths.settings_file()
-    if not config_file.is_file():
+def installed_plist() -> dict[str, Any] | None:
+    """已安裝的排程檔內容；沒裝是 None，讀不了是空 dict。"""
+    target = plist_path()
+    if not target.is_file():
         return None
     try:
-        data = DataPaths(load_settings().data_dir)
-    except HouseWatchError:
-        return None
+        content = plistlib.loads(target.read_bytes())
+    except Exception:  # 壞掉的 plist：當成讀不了
+        return {}
+    return content if isinstance(content, dict) else {}
+
+
+@contextmanager
+def _scheduled_environment(env: Mapping[str, Any]) -> Iterator[None]:
+    """暫時套用排程檔裡的 HOUSE_WATCH_* 路徑（解析資料夾用），結束後還原。"""
+    saved = {key: os.environ.get(key) for key in SCHEDULE_ENV_KEYS}
+    try:
+        for key in SCHEDULE_ENV_KEYS:
+            value = env.get(key)
+            if isinstance(value, str) and value:
+                os.environ[key] = value
+        yield
+    finally:
+        for key, value in saved.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+
+def _data_run_lock(env: Mapping[str, Any] | None = None) -> FileLock | None:
+    """資料夾的執行鎖（和 tick、update、export、publish 同一把；事後審查 SA-6、修完再審 F1-6）。
+
+    換版（uv tool install --force）和正在跑的 tick 重疊時，同一個程序會新舊模組混用。
+    env：已安裝排程檔的 EnvironmentVariables；有給就照它找資料夾（在沒設 HOUSE_WATCH_* 的
+    終端機換版也找得到正式的資料夾）。設定檔或資料夾找不到時回 None。
+    """
+    from house_watch.settings import load_settings
+
+    with _scheduled_environment(env or {}):
+        config_file, _explicit = paths.settings_file()
+        if not config_file.is_file():
+            return None
+        try:
+            data = DataPaths(load_settings().data_dir)
+        except HouseWatchError:
+            return None
     return FileLock(data.lock) if data.root.is_dir() else None
 
 
-def run_deploy_local(*, ref: str, repo: str | None = None) -> int:
+def run_deploy_local(*, ref: str, repo: str | None = None, force: bool = False) -> int:
     """`house-watch deploy-local <git-ref>`：在開發資料夾裡執行，把那個 ref 裝成固定版本。"""
     from house_watch.cli import Ui
 
@@ -596,8 +628,25 @@ def run_deploy_local(*, ref: str, repo: str | None = None) -> int:
     if reason is not None:
         ui.error(f"執行區{reason}；請用 {ENV_RUNTIME_DIR} 指到別的位置")
         return int(ExitCode.CONFIG)
+    scheduled = installed_plist()
+    if scheduled is not None:
+        program = (scheduled.get("ProgramArguments") or [None])[0]
+        if not isinstance(program, str) or not _inside(Path(program), layout.root):
+            if not force:
+                ui.error(
+                    f"要裝的執行區（{layout.root}）不是排程檔在用的；換版不會生效。"
+                    f"請設 {ENV_RUNTIME_DIR}，或加 --force"
+                )
+                return int(ExitCode.CONFIG)
     layout.root.mkdir(parents=True, exist_ok=True)
-    lock = _data_run_lock()
+    env = (scheduled or {}).get("EnvironmentVariables")
+    lock = _data_run_lock(env if isinstance(env, dict) else None)
+    if lock is None and scheduled is not None and not force:
+        ui.error(
+            "排程已安裝，但找不到它用的資料夾，沒辦法確認排程沒有在跑（執行鎖）；"
+            "先停排程，或加 --force"
+        )
+        return int(ExitCode.CONFIG)
     if lock is None:
         ui.error(
             "注意：找不到本機設定檔或資料夾，沒辦法確認排程沒有在跑；"

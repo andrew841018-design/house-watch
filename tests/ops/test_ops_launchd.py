@@ -394,6 +394,7 @@ def test_deploy_local_waits_for_a_running_tick(monkeypatch, tmp_path, capsys):
     data.root.mkdir(parents=True)
     monkeypatch.setenv(launchd.ENV_RUNTIME_DIR, str(tmp_path / "runtime"))
     monkeypatch.setattr(launchd, "TCC_HOME_DIRS", ())  # pytest 的暫存資料夾可能在 ~/Desktop
+    monkeypatch.setattr(launchd, "launch_agents_dir", lambda: tmp_path / "LaunchAgents")  # 不讀真的排程檔
     calls = []
     monkeypatch.setattr(launchd, "deploy_local", lambda *a, **k: calls.append(a))
     held = FileLock(data.lock)
@@ -443,3 +444,53 @@ def test_install_refuses_temporary_locations_and_an_uninitialised_data_folder(tm
     with pytest.raises(ConfigError, match="house-watch init"):
         _install(tmp_path / "y", data_dir=tmp_path / "y" / "not-initialised")
     assert not (base / "LaunchAgents").exists()
+
+
+def _write_installed_plist(agents: Path, executable: Path, env: dict[str, str]) -> None:
+    agents.mkdir(parents=True, exist_ok=True)
+    content = {"Label": launchd.LABEL, "ProgramArguments": [str(executable), "tick"], "EnvironmentVariables": env}
+    launchd.plist_path(agents).write_bytes(plistlib.dumps(content))
+
+
+def test_deploy_local_finds_the_scheduled_folder_from_the_installed_plist(monkeypatch, tmp_path, capsys):
+    """修完再審 F1-6：在沒設 HOUSE_WATCH_* 的終端機換版時，也要用排程檔裡的路徑找到正式的資料夾，
+    拿那把執行鎖；排程正在跑就不換。"""
+    from filelock import FileLock
+
+    from house_watch import db
+    from house_watch.paths import DataPaths
+
+    data = DataPaths(tmp_path / "live-data")
+    db.open_or_init(data).close()
+    runtime = tmp_path / "runtime"
+    monkeypatch.setenv(launchd.ENV_RUNTIME_DIR, str(runtime))
+    monkeypatch.delenv("HOUSE_WATCH_CONFIG")
+    monkeypatch.delenv("HOUSE_WATCH_DATA_DIR")
+    monkeypatch.setattr(launchd, "TCC_HOME_DIRS", ())
+    agents = tmp_path / "LaunchAgents"
+    monkeypatch.setattr(launchd, "launch_agents_dir", lambda: agents)
+    _write_installed_plist(agents, RuntimeLayout(runtime).executable, {"HOUSE_WATCH_DATA_DIR": str(data.root)})
+    calls = []
+    monkeypatch.setattr(launchd, "deploy_local", lambda *a, **k: calls.append(a))
+    held = FileLock(data.lock)
+    held.acquire()
+    try:
+        code = launchd.run_deploy_local(ref="v9", repo=str(tmp_path))
+    finally:
+        held.release()
+    assert code != 0 and calls == []
+    assert "執行鎖" in capsys.readouterr().err
+
+
+def test_deploy_local_refuses_a_runtime_the_schedule_does_not_use(monkeypatch, tmp_path, capsys):
+    """修完再審 F1-6：要裝的執行區和排程檔用的不一樣時（例如忘了設 HOUSE_WATCH_RUNTIME_DIR），
+    換版不會生效，而且沒有任何提示。拒絕，加 --force 才繼續。"""
+    monkeypatch.setenv(launchd.ENV_RUNTIME_DIR, str(tmp_path / "other-runtime"))
+    monkeypatch.setattr(launchd, "TCC_HOME_DIRS", ())
+    agents = tmp_path / "LaunchAgents"
+    monkeypatch.setattr(launchd, "launch_agents_dir", lambda: agents)
+    _write_installed_plist(agents, tmp_path / "scheduled-runtime" / "bin" / "house-watch", {})
+    calls = []
+    monkeypatch.setattr(launchd, "deploy_local", lambda *a, **k: calls.append(a))
+    assert launchd.run_deploy_local(ref="v9", repo=str(tmp_path)) != 0 and calls == []
+    assert "執行區" in capsys.readouterr().err
