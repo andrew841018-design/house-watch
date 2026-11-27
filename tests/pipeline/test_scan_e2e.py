@@ -370,3 +370,19 @@ def test_a_probe_sighting_restarts_the_delist_count(env, site):
     env.clock.advance(DAY)
     env.update()  # 完整掃描 4：還是沒看到
     assert env.listing("U2")["status"] == "gone"
+
+
+def test_a_small_site_needs_two_different_days_to_delist(env, site):
+    """事後審查 CX-5（擁有者 11/21 選「每天最多算一次」）：小站每一輪都做完整掃描，同一天
+    兩次沒看到就判下架，暫時被隱藏幾小時的物件會被誤標。每個台北日期最多算一次有效完整掃描。"""
+    site.add(*five_units())
+    env.update()  # 小站：每一輪都做完整掃描
+    site.remove("U2")
+    for _ in range(2):
+        env.clock.advance(3 * HOUR)
+        env.update()
+    assert statuses(env)[-1][:2] == ("full", "ok")
+    assert env.listing("U2")["status"] == "active", "同一天兩次沒看到，不算下架"
+    env.clock.advance(DAY)
+    env.update()
+    assert env.listing("U2")["status"] == "gone", "隔天又沒看到：兩個日期都沒看到，下架"

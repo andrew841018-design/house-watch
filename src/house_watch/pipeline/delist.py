@@ -17,7 +17,7 @@ import datetime as dt
 import sqlite3
 from dataclasses import dataclass
 
-from house_watch.clock import from_iso, to_iso
+from house_watch.clock import from_iso, taipei_date, to_iso
 from house_watch.db import SCAN_OK_STATUSES
 
 GONE_AFTER_VALID_SCANS = 2  # 擁有者同意的規則：連續兩次有效完整掃描都沒看到
@@ -59,11 +59,22 @@ def has_valid_full_scan(conn: sqlite3.Connection, source: str, area: str, scope_
 def gone_cutoff(
     conn: sqlite3.Connection, source: str, area: str, scope_hash: str
 ) -> dt.datetime | None:
-    """last_seen 早於這個時間的刊登就算下架；有效完整掃描不到兩次時是 None。"""
-    scans = valid_full_scans(conn, source, area, scope_hash, limit=GONE_AFTER_VALID_SCANS)
-    if len(scans) < GONE_AFTER_VALID_SCANS:
-        return None
-    return scans[-1].started_at
+    """last_seen 早於這個時間的刊登就算下架；有效完整掃描不到兩個台北日期時是 None。
+
+    每個台北日期只算最後一次有效完整掃描（事後審查 CX-5，擁有者 11/21 決定）：小站每一輪都做
+    完整掃描，同一天兩次沒看到就下架的話，暫時被隱藏幾小時的物件會被誤標。
+    """
+    per_day: list[ScanRef] = []
+    days: set[dt.date] = set()
+    for scan in valid_full_scans(conn, source, area, scope_hash):
+        day = taipei_date(scan.started_at)
+        if day in days:
+            continue
+        days.add(day)
+        per_day.append(scan)
+        if len(per_day) == GONE_AFTER_VALID_SCANS:
+            return per_day[-1].started_at
+    return None
 
 
 def mark_gone(
