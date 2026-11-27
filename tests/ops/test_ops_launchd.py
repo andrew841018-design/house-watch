@@ -494,3 +494,35 @@ def test_deploy_local_refuses_a_runtime_the_schedule_does_not_use(monkeypatch, t
     monkeypatch.setattr(launchd, "deploy_local", lambda *a, **k: calls.append(a))
     assert launchd.run_deploy_local(ref="v9", repo=str(tmp_path)) != 0 and calls == []
     assert "執行區" in capsys.readouterr().err
+
+
+def test_deploy_local_ignores_terminal_paths_the_plist_does_not_have(monkeypatch, tmp_path, capsys):
+    """修完再審 F2-3：plist 只寫了設定檔時，終端機多設的 HOUSE_WATCH_DATA_DIR（指到開發資料夾）
+    不能蓋過去；要照排程實際會用的路徑（設定檔裡的 data_dir）找正式資料夾的鎖。"""
+    from filelock import FileLock
+
+    from house_watch import db
+    from house_watch.paths import DataPaths
+
+    live = DataPaths(tmp_path / "live-data")
+    db.open_or_init(live).close()
+    dev = DataPaths(tmp_path / "dev-data")
+    db.open_or_init(dev).close()
+    config = tmp_path / "live-settings.toml"
+    config.write_text(f'data_dir = "{live.root}"\n', encoding="utf-8")
+    runtime = tmp_path / "runtime"
+    monkeypatch.setenv(launchd.ENV_RUNTIME_DIR, str(runtime))
+    monkeypatch.setenv("HOUSE_WATCH_DATA_DIR", str(dev.root))  # 終端機多設的
+    monkeypatch.setattr(launchd, "TCC_HOME_DIRS", ())
+    agents = tmp_path / "LaunchAgents"
+    monkeypatch.setattr(launchd, "launch_agents_dir", lambda: agents)
+    _write_installed_plist(agents, RuntimeLayout(runtime).executable, {"HOUSE_WATCH_CONFIG": str(config)})
+    calls = []
+    monkeypatch.setattr(launchd, "deploy_local", lambda *a, **k: calls.append(a))
+    held = FileLock(live.lock)
+    held.acquire()
+    try:
+        code = launchd.run_deploy_local(ref="v9", repo=str(tmp_path))
+    finally:
+        held.release()
+    assert code != 0 and calls == []

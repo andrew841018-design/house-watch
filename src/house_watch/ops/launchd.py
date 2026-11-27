@@ -581,14 +581,21 @@ def installed_plist() -> dict[str, Any] | None:
 
 
 @contextmanager
-def _scheduled_environment(env: Mapping[str, Any]) -> Iterator[None]:
-    """暫時套用排程檔裡的 HOUSE_WATCH_* 路徑（解析資料夾用），結束後還原。"""
+def _scheduled_environment(env: Mapping[str, Any] | None) -> Iterator[None]:
+    """暫時套用排程檔裡的 HOUSE_WATCH_* 路徑（解析資料夾用），結束後還原。
+
+    env 是 None（沒裝排程）時照終端機的環境。有排程檔時只用它的值：排程檔沒有的 key 先拿掉，
+    終端機多設的路徑（例如指到開發資料夾）才不會蓋過排程實際會用的（修完再審 F2-3）。
+    """
     saved = {key: os.environ.get(key) for key in SCHEDULE_ENV_KEYS}
     try:
-        for key in SCHEDULE_ENV_KEYS:
-            value = env.get(key)
-            if isinstance(value, str) and value:
-                os.environ[key] = value
+        if env is not None:
+            for key in SCHEDULE_ENV_KEYS:
+                value = env.get(key)
+                if isinstance(value, str) and value:
+                    os.environ[key] = value
+                else:
+                    os.environ.pop(key, None)
         yield
     finally:
         for key, value in saved.items():
@@ -607,7 +614,7 @@ def _data_run_lock(env: Mapping[str, Any] | None = None) -> FileLock | None:
     """
     from house_watch.settings import load_settings
 
-    with _scheduled_environment(env or {}):
+    with _scheduled_environment(env):
         config_file, _explicit = paths.settings_file()
         if not config_file.is_file():
             return None
@@ -640,6 +647,8 @@ def run_deploy_local(*, ref: str, repo: str | None = None, force: bool = False) 
                 return int(ExitCode.CONFIG)
     layout.root.mkdir(parents=True, exist_ok=True)
     env = (scheduled or {}).get("EnvironmentVariables")
+    if scheduled is not None and not isinstance(env, dict):
+        env = {}  # 排程檔沒有任何路徑：照排程實際會用的預設位置找，不用終端機的
     lock = _data_run_lock(env if isinstance(env, dict) else None)
     if lock is None and scheduled is not None and not force:
         ui.error(
