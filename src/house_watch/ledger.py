@@ -133,6 +133,15 @@ class FetchLedger:
             requests[source] = {"date": day.isoformat(), "n": count}
             return count
 
+    def ensure_count(self, source: str, day: dt.date, at_least: int) -> None:
+        """帳本的計數至少是 at_least（不加 1）：Fetcher 建立時用資料夾 DB 的紀錄補回（F2-2）。"""
+        if at_least <= 0:
+            return
+        with self._open(write=True) as data:
+            requests = _section(data, "requests")
+            if _count_for(requests.get(source), day) < at_least:
+                requests[source] = {"date": day.isoformat(), "n": at_least}
+
     def host_last(self, host: str) -> float | None:
         with self._open(write=False) as data:
             value = _section(data, "host_last").get(host)

@@ -248,3 +248,50 @@ def test_a_ledger_time_far_in_the_future_is_capped(two_folders, clock):
     等待最多一個間隔，不能讓那個主機的每個請求都逾時。"""
     FetchLedger().mark_host(HOST, clock.now().timestamp() + 7200)
     two_folders(0, Recorder(clock)).fetch(get(), source=SOURCE, deadline=clock.monotonic() + 60)
+
+
+def test_a_stuck_host_lock_stops_only_that_source(two_folders, clock, monkeypatch):
+    """修完再審 F2-1：另一個資料夾拿著主機鎖卡住（Ctrl-Z、讀標頭卡住）時，等鎖有自己的上限，
+    等不到只停這個來源（SiteError），不能等掉整輪、讓後面的來源都不掃（DeadlineReached）。"""
+    from house_watch import http
+    from house_watch.http import SiteError
+
+    monkeypatch.setattr(http, "HOST_LOCK_WAIT_MAX_S", 0.3)
+    held = FetchLedger().host_lock(HOST)
+    held.acquire()
+    try:
+        with pytest.raises(SiteError) as caught:
+            two_folders(0, Recorder(clock)).fetch(get(), source=SOURCE, deadline=clock.monotonic() + 1)
+    finally:
+        held.release()
+    assert type(caught.value) is SiteError
+
+
+def test_db_pause_and_count_reach_the_ledger_when_a_fetcher_starts(tmp_path, clock):
+    """修完再審 F2-2：正式掃描遇到暫停中、今天用完的來源根本不呼叫 fetch()，帳本被清掉後就補不回。
+    Fetcher 建立時就把這個資料夾 DB 的計數與暫停同步到帳本。"""
+    from house_watch.http import StateStore
+
+    conn_a, a = _folder(tmp_path, "a", clock, Recorder(clock), daily_cap=2)
+    a.fetch(get(), source=SOURCE, deadline=FAR)
+    a.fetch(get(), source=SOURCE, deadline=FAR)  # 今天用完
+    StateStore(conn_a).update_state(SOURCE, paused_until=clock.now() + dt.timedelta(hours=5))
+    a.close()
+    ledger_path().unlink()  # 帳本被清掉
+    again = Fetcher(  # 正式 tick 在同一個資料夾建 Fetcher（暫停中、用完的來源不會 fetch）
+        conn_a,
+        http=load_public().http,
+        policies={SOURCE: SourcePolicy(frozenset({HOST}), daily_cap=2)},
+        clock=clock,
+        transport=httpx.MockTransport(Recorder(clock)),
+        sleep=clock.advance,
+    )
+    again.close()
+    handler = Recorder(clock)
+    conn_b, b = _folder(tmp_path, "b", clock, handler, daily_cap=2)
+    with pytest.raises((Blocked, BudgetExhausted)):
+        b.fetch(get(), source=SOURCE, deadline=FAR)
+    assert handler.times == []
+    b.close()
+    conn_a.close()
+    conn_b.close()

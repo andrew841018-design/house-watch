@@ -59,6 +59,8 @@ MIN_HOST_INTERVAL_S = 4.0  # 擁有者決定：同一主機兩次請求至少間
 # 一個回應從送出到讀完的總時間上限（事後審查 SA-3）：read timeout 只限單次讀取，
 # 伺服器慢慢送時可以讀很久，tick 會一直拿著執行鎖。下載（實價登錄季檔）給長一點。
 REQUEST_TOTAL_MAX_S = 120.0
+# 等另一個資料夾放掉主機鎖最多等多久（修完再審 F2-1）：持有者卡住時只停這個來源，不等掉整輪。
+HOST_LOCK_WAIT_MAX_S = 180.0
 DOWNLOAD_TOTAL_MAX_S = 900.0
 MAX_REDIRECTS = 5
 BACKOFF_BASE = dt.timedelta(hours=24)
@@ -360,6 +362,24 @@ class Fetcher:
         self._ended: dict[str, ErrorCode] = {}
         self._soft_counted: set[str] = set()
         self.requests_sent: dict[str, int] = {}
+        self._sync_ledger()
+
+    def _sync_ledger(self) -> None:
+        """把這個資料夾 DB 的今日計數與暫停寫進帳本（修完再審 F2-2）。
+
+        帳本被清掉（例如開機時清 /tmp）之後，正式掃描遇到暫停中、今天用完的來源不會呼叫
+        fetch()，fetch 裡的補回就永遠不會發生；所以在建立 Fetcher 時就補。
+        """
+        today = taipei_date(self._clock.now())
+        now = self._clock.now()
+        for source in self._policies:
+            try:
+                self.ledger.ensure_count(source, today, self.store.db_requests_on(source, today))
+                until = self.store.state(source).paused_until
+                if until is not None and until > now:
+                    self.ledger.set_paused(source, until)
+            except (ConfigError, OSError) as exc:
+                logging.getLogger("house_watch.tick").warning("抓取帳本同步不了：%s", type(exc).__name__)
 
     @classmethod
     def from_settings(
@@ -468,10 +488,15 @@ class Fetcher:
         assert host is not None
         # 同一主機的跨程序鎖（修完再審 F1-1）：另一個資料夾的請求還在進行時，要等它讀完。
         lock = self.ledger.host_lock(host)
+        remaining = max(0.0, deadline - self._clock.monotonic())
         try:
-            lock.acquire(timeout=max(0.0, deadline - self._clock.monotonic()))
+            lock.acquire(timeout=min(remaining, HOST_LOCK_WAIT_MAX_S))
         except Timeout:
-            raise DeadlineReached(ErrorCode.TIMEOUT, "等同一主機的另一個請求逾時") from None
+            if remaining <= HOST_LOCK_WAIT_MAX_S:
+                raise DeadlineReached(ErrorCode.TIMEOUT, "等同一主機的另一個請求逾時") from None
+            # 別的資料夾拿著這個主機的鎖太久（卡住或被暫停）：只停這個來源，不等掉整輪（F2-1）。
+            logging.getLogger("house_watch.tick").warning("%s：等主機 %s 的鎖逾時，這個來源本輪停止", source, host)
+            raise SiteError(ErrorCode.TIMEOUT, "等同一主機的另一個資料夾逾時") from None
         try:
             return self._send_locked(spec, url, source, policy, deadline, host)
         finally:
