@@ -54,6 +54,11 @@
 
 中信與住商的內容都是 `User-agent: *` / `Allow: /`，所以雜湊相同。
 
+2026-11-27（台北）再查中信：robots.txt 改成 `User-agent: *` / `Allow: /`，另外加一行
+`Sitemap: https://www.cthouse.com.tw/sitemaps/sitemap_index.xml`（HTTP 200、91 bytes），仍然允許所有路徑，
+列表 API `/api/house_list.ashx` 也在內。新的雜湊是 `bf51cef9ff57af80080d31789c37584bfdbf35c84e990faa0443d6265f01a803`，
+擁有者確認接受（正式環境 11/24 起因 robots_changed 停用中信）。
+
 ## 對請求預算的影響（只算桃園區）
 
 - 中信：完整掃描 108 頁，超過 default.toml 目前的 `max_requests_full = 60`（佔位值），

@@ -175,7 +175,7 @@ relax_strict_hosts = []   # 只清掉 X509 strict 旗標的主機；憑證驗證
 [robots.accepted_hash]
 # <來源> = "<robots.txt 內容的 sha256>"；內容一變就停用該站，等人確認。
 # 雜湊算法見 sources/robots.py 的 robots_digest()；數值來自實際連線驗證（tests/fixtures/sources/LIVE_CHECK.md）。
-cthouse = "16ceb5ee3e0dc13aa9adf31a3ebbe45a1d965b8c2b9f72eaf84e5911e140ed95"
+cthouse = "bf51cef9ff57af80080d31789c37584bfdbf35c84e990faa0443d6265f01a803"  # 2026-11-27 中信改版（Allow: / 加 Sitemap），擁有者確認接受
 hbhousing = "16ceb5ee3e0dc13aa9adf31a3ebbe45a1d965b8c2b9f72eaf84e5911e140ed95"
 etwarm = "0b3f076e693fb4e22f8189d1ec1fb97c5ada4434472e20c9dac5a42bd285d7b9"
 rakuya = "882f70bbca335e4ffa67376fa2eb3355b89c869e3ccb6e53758e6c15d97c3e67"     # www、community 兩個檔依序
