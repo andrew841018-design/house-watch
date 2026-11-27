@@ -57,6 +57,7 @@ from house_watch import paths
 from house_watch.clock import TAIPEI, SystemClock, to_iso
 from house_watch.errors import ConfigError, ExitCode, HouseWatchError
 from house_watch.ops.logging import ENV_LOG_DIR, LAUNCHD_STDERR, LAUNCHD_STDOUT, log_dir
+from house_watch.paths import DataPaths
 
 LABEL = "com.house-watch.tick"
 RUNTIME_APP_NAME = "house_watch_runtime"
@@ -68,6 +69,8 @@ LAUNCHD_PATH = "/usr/bin:/bin:/usr/sbin:/sbin"
 # macOS 隱私保護（TCC）擋住背景程式讀寫的位置；排程的執行檔、工作目錄、log 都不能放這些地方。
 TCC_HOME_DIRS = ("Desktop", "Documents", "Downloads")
 TCC_ROOTS = ("/Volumes",)
+# 會被系統（或 scratchpad）清掉的暫存位置：排程要用的路徑不能放這裡（修完再審 F1-7）。
+TEMP_ROOTS = ("/tmp", "/private/tmp", "/var/folders", "/private/var/folders")
 COMMAND_TIMEOUT_S = 1800
 
 
@@ -145,6 +148,14 @@ def protected_location(
     for root in TCC_ROOTS:
         if _inside(path, Path(root)):
             return f"在 {root} 底下（外接磁碟會被 macOS 隱私保護擋住）"
+    return None
+
+
+def temporary_location(path: Path) -> str | None:
+    """path 在暫存位置裡時回傳原因；否則 None。"""
+    for root in TEMP_ROOTS:
+        if _inside(path, Path(root)):
+            return f"在暫存位置 {root} 底下（會被系統清掉）"
     return None
 
 
@@ -275,15 +286,18 @@ def install_schedule(
             "找不到固定版本的執行檔；先執行 house-watch deploy-local <tag>（見 README）"
         )
     for what, path in (("執行檔", executable), ("執行區", layout.root), ("log 資料夾", logs)):
-        reason = protected_location(path, dev_root=dev_root, home=home)
+        reason = protected_location(path, dev_root=dev_root, home=home) or temporary_location(path)
         if reason is not None:
             raise ConfigError(f"{what}{reason}，排程不能用")
     for what, maybe in (("設定檔", config_path), ("資料夾", data_dir), *other_paths):
         if maybe is None:
             continue
-        reason = protected_location(maybe, home=home)
+        reason = protected_location(maybe, home=home) or temporary_location(maybe)
         if reason is not None:
             raise ConfigError(f"{what}{reason}，排程不能用")
+    if data_dir is not None and DataPaths(data_dir).is_empty():
+        # tick 不自動建資料夾（F1-7），沒 init 的話每小時都會以結束碼 2 停止。
+        raise ConfigError(f"資料夾不存在或是空的：{data_dir}；先執行 house-watch init 再安裝排程")
     times = local_times(calendar_hours(window, every_hours), today=today, local_tz=local_tz)
     content = build_plist(
         executable=executable, working_dir=layout.root, logs=logs, times=times, env=env

@@ -78,6 +78,8 @@ def clock() -> FakeClock:
 
 @pytest.fixture
 def steps(monkeypatch, clock) -> Steps:
+    # tick 不自動 init（F1-7）：像正式環境一樣，先用 house-watch init 建好資料夾。
+    db.open_or_init(DataPaths(load_settings().data_dir)).close()
     return Steps(monkeypatch, clock)
 
 
@@ -116,16 +118,15 @@ def _log_text(tmp_path: Path) -> str:
 
 def test_lock_contention_logs_skipped_and_exits_0(tmp_path, steps):
     data = data_paths()
-    data.root.mkdir(parents=True)
     with FileLock(data.lock):  # 模擬另一輪正在跑
         assert steps.run(tmp_path) == 0
     assert steps.calls == []
     assert "skipped" in _log_text(tmp_path)
-    assert not data.db.exists()
+    assert _kv(tick.KV_LAST_RUN) is None  # 拿不到鎖：什麼都沒做
 
 
-def test_first_tick_initialises_an_empty_data_dir(tmp_path, steps):
-    data = data_paths()
+def test_first_tick_after_init(tmp_path, steps):
+    data = data_paths()  # steps 已經像 house-watch init 一樣建好資料夾（tick 不自動 init，F1-7）
     assert steps.run(tmp_path) == 0
     assert data.db.is_file() and data.instance_marker.is_file()
     # 還沒掃過：樂屋用 max_requests_full 估計，是大的來源 → 掃描先跑，門牌、實價登錄排在後面
@@ -139,8 +140,7 @@ def test_first_tick_initialises_an_empty_data_dir(tmp_path, steps):
 
 def test_folder_with_marker_but_no_database_exits_2(tmp_path, steps):
     data = data_paths()
-    data.root.mkdir(parents=True)
-    data.instance_marker.write_text("{}\n", encoding="utf-8")
+    data.db.unlink()  # 只剩 instance 標記、沒有資料庫
     assert steps.run(tmp_path) == 2
     assert steps.calls == []
 
@@ -473,3 +473,20 @@ def test_a_sleep_after_the_deadline_still_skips_export(tmp_path, steps, monkeypa
     assert steps.run(tmp_path) == 1
     assert "export" not in steps.calls and steps.published == []
     assert json.loads(_kv(tick.KV_LAST_RUN))["stopped"] == "deadline"
+
+
+def test_tick_refuses_a_missing_or_empty_data_folder(tmp_path, monkeypatch):
+    """修完再審 F1-7：設定檔在、資料夾卻不存在（路徑設錯、資料夾被搬走、指到被清掉的暫存區）時，
+    tick 不能自動建新資料庫、從頭抓、再把新資料發布出去。第一次用要先 house-watch init。"""
+    from house_watch.errors import ExitCode
+
+    data = Path(os.environ["HOUSE_WATCH_DATA_DIR"])
+    published = []
+    code = tick.run_tick(
+        clock=FakeClock(START),
+        log_directory=tmp_path / "logs",
+        console=False,
+        publisher=lambda *a, **k: published.append(1),
+    )
+    assert code == int(ExitCode.CONFIG)
+    assert not data.exists() and published == []

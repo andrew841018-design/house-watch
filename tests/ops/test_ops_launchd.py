@@ -29,6 +29,14 @@ def _fake_runtime(root: Path) -> RuntimeLayout:
     return layout
 
 
+def _init_data() -> None:
+    from house_watch import db
+    from house_watch.paths import DataPaths
+    from house_watch.settings import load_settings
+
+    db.open_or_init(DataPaths(load_settings().data_dir)).close()
+
+
 @pytest.fixture
 def no_subprocess(monkeypatch):
     def refuse(*args, **kwargs):
@@ -154,6 +162,7 @@ def test_schedule_command_end_to_end(monkeypatch, tmp_path, capsys, no_subproces
     monkeypatch.setattr(launchd, "TCC_HOME_DIRS", ())  # pytest 的暫存資料夾可能在 ~/Desktop
     monkeypatch.setattr(launchd, "source_checkout", lambda: None)
     _fake_runtime(tmp_path / "runtime")
+    _init_data()  # house-watch init：沒 init 的資料夾不能裝排程（F1-7）
     assert launchd.run_schedule(action="install", every_hours=None) == 0
     out = capsys.readouterr().out
     assert "launchctl bootstrap gui/" in out and "沒有載入或啟動" in out
@@ -183,6 +192,7 @@ def test_schedule_command_carries_the_installer_paths_into_the_plist(
     monkeypatch.setattr(launchd, "TCC_HOME_DIRS", ())  # pytest 的暫存資料夾可能在 ~/Desktop
     monkeypatch.setattr(launchd, "source_checkout", lambda: None)
     _fake_runtime(tmp_path / "runtime")
+    _init_data()  # house-watch init：沒 init 的資料夾不能裝排程（F1-7）
     assert launchd.run_schedule(action="install", every_hours=None) == 0
     capsys.readouterr()
     written = plistlib.loads(launchd.plist_path(tmp_path / "LaunchAgents").read_bytes())
@@ -203,6 +213,7 @@ def test_schedule_command_runs_every_hour_by_default(monkeypatch, tmp_path, caps
     monkeypatch.setattr(launchd, "TCC_HOME_DIRS", ())
     monkeypatch.setattr(launchd, "source_checkout", lambda: None)
     _fake_runtime(tmp_path / "runtime")
+    _init_data()  # house-watch init：沒 init 的資料夾不能裝排程（F1-7）
     assert launchd.run_schedule(action="install", every_hours=None) == 0
     capsys.readouterr()
     written = plistlib.loads(launchd.plist_path(tmp_path / "LaunchAgents").read_bytes())
@@ -265,9 +276,13 @@ def test_install_refuses_config_or_data_in_protected_locations(tmp_path, no_subp
 
 def test_install_and_logging_do_not_block_the_first_tick(monkeypatch, tmp_path):
     """資料夾在第一次 init 之前只能是空的：log、執行區、plist 都不能放進資料夾。"""
+    from house_watch import db
+    from house_watch.paths import DataPaths
+
     data = Path(os.environ["HOUSE_WATCH_DATA_DIR"])
     _install(tmp_path)
     assert not data.exists()
+    db.open_or_init(DataPaths(data)).close()  # house-watch init：tick 不自動建資料夾（F1-7）
     clock = FakeClock(dt.datetime(2026, 11, 21, 0, 0, tzinfo=dt.UTC))
     for name in ("doorindex", "lvr", "sources"):
         monkeypatch.setitem(tick.cli.STEP_FUNCTIONS, name, lambda ctx: tick.cli.StepOutcome())
@@ -417,3 +432,14 @@ def test_schedule_install_refuses_without_a_settings_file(monkeypatch, tmp_path,
     assert launchd.run_schedule(action="install", every_hours=None) == 2
     assert "設定檔" in capsys.readouterr().err
     assert not (tmp_path / "LaunchAgents").exists()
+
+
+def test_install_refuses_temporary_locations_and_an_uninitialised_data_folder(tmp_path, no_subprocess):
+    """修完再審 F1-7：排程要用的路徑不能在會被系統清掉的暫存位置（例如試跑留下的 scratchpad）；
+    資料夾也要先 house-watch init，不然 tick 每小時都會以結束碼 2 停止。"""
+    base = tmp_path / "x"
+    with pytest.raises(ConfigError, match="暫存"):
+        _install(base, data_dir=Path("/private/tmp/hw-scratch/data"))
+    with pytest.raises(ConfigError, match="house-watch init"):
+        _install(tmp_path / "y", data_dir=tmp_path / "y" / "not-initialised")
+    assert not (base / "LaunchAgents").exists()

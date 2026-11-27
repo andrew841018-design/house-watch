@@ -641,7 +641,11 @@ def run_tick(
             return int(exc.exit_code)
         ui.protect(settings)
         data = DataPaths(settings.data_dir)
-        data.root.mkdir(parents=True, exist_ok=True)
+        if data.is_empty():
+            # 修完再審 F1-7：資料夾不存在或是空的（路徑設錯、資料夾被搬走、指到被清掉的暫存區）時，
+            # 不自動建新資料庫、從頭抓、再把新資料發布出去。第一次用要先執行 house-watch init。
+            log.error("資料夾不存在或是空的：%s；排程不會自動建立，請先執行 house-watch init", data.root)
+            return int(ExitCode.CONFIG)
         lock = FileLock(data.lock)
         try:
             lock.acquire(timeout=0)
