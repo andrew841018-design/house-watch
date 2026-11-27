@@ -448,3 +448,20 @@ def test_publish_command_without_configuration_exits_2(capsys):
     Path(os.environ["HOUSE_WATCH_CONFIG"]).write_text("", encoding="utf-8")
     assert cli.main(["publish"]) == 2
     assert "README" in capsys.readouterr().err
+
+
+def test_a_stale_index_lock_in_a_verified_clone_is_removed(env):
+    """修完再審 F2-4：git 拿著 .git/index.lock 時被強制結束（看門狗、斷電），之後每一輪的
+    reset 都會失敗、發布一直停著。身分確認後，夠舊的 index.lock 刪掉再繼續。"""
+    import os
+    import time
+
+    env.export()
+    assert env.publish().pushed
+    stale = env.site / ".git" / "index.lock"
+    stale.write_bytes(b"")
+    old = time.time() - 3600
+    os.utime(stale, (old, old))
+    env.export(listings="[3]")
+    assert env.publish().pushed
+    assert not stale.exists()

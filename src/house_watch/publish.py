@@ -41,6 +41,7 @@ import shutil
 import sqlite3
 import stat
 import subprocess
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -53,6 +54,7 @@ from house_watch.paths import DataPaths
 from house_watch.settings import Settings, load_settings
 
 AUTHOR_NAME = "house-watch"
+STALE_INDEX_LOCK_S = 600  # 比這個還舊的 .git/index.lock 當成被中斷留下的（F2-4）
 AUTHOR_EMAIL = "noreply@house-watch.invalid"
 COMMIT_TEMPLATE = "site {timestamp} build {build_id}"
 REMOTE_NAME = "origin"
@@ -313,7 +315,16 @@ def restore_worktree(git: Git) -> None:
     """身分確認過的網站 clone：工作區還原成上一次發布的 commit（修完再審 F1-4）。
 
     Finder 的 .DS_Store、上一輪同步到一半中斷留下的改動，都不能讓發布永遠停住。
+    git 拿著 .git/index.lock 時被強制結束（看門狗、斷電）留下的舊鎖檔，也先刪掉（F2-4）。
     """
+    stale = git.cwd / ".git" / "index.lock"
+    try:
+        age = time.time() - stale.stat().st_mtime
+    except FileNotFoundError:
+        age = None
+    if age is not None and age > STALE_INDEX_LOCK_S:
+        stale.unlink(missing_ok=True)
+        logging.getLogger("house_watch.tick").warning("發布：刪掉殘留的 .git/index.lock（%d 秒前）", int(age))
     git.run("reset", "-q", "--hard", "HEAD")
     git.run("clean", "-fdq")
 
