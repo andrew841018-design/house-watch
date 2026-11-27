@@ -42,6 +42,7 @@ import os
 import re
 import shutil
 import sqlite3
+import threading
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -608,6 +609,31 @@ class Tick:
         self._publish(conn)
 
 
+# ---------------------------------------------------------------- 看門狗（修完再審 F1-5）
+
+WATCHDOG_MARGIN_S = 600.0  # 整輪時間上限之外再給 10 分鐘
+_exit_process = os._exit  # 測試會換掉
+
+
+def watchdog_seconds(settings: Settings) -> float:
+    return settings.public.schedule.run_deadline_minutes * 60.0 + WATCHDOG_MARGIN_S
+
+
+def _start_watchdog(seconds: float, log: logging.Logger) -> threading.Timer:
+    """tick 卡住（讀標頭、SQLite 鎖…）超過時間時強制結束程序：放掉執行鎖，下一個整點才跑得了。"""
+
+    def fire() -> None:
+        log.error("看門狗：tick 超過 %d 秒還沒結束，強制結束", int(seconds))
+        for handler in log.handlers:
+            handler.flush()
+        _exit_process(int(ExitCode.PARTIAL))
+
+    timer = threading.Timer(seconds, fire)
+    timer.daemon = True
+    timer.start()
+    return timer
+
+
 def run_tick(
     *,
     clock: Clock | None = None,
@@ -618,7 +644,6 @@ def run_tick(
     export_step: Callable[[cli.StepContext], cli.StepOutcome] | None = None,
 ) -> int:
     """`house-watch tick` 的入口（cli.ENTRY_POINTS["tick"]）。參數只給測試用。"""
-    # TODO(deferred.md 2026-11-21 SA-3)：HTTP 讀取以外的卡住沒有看門狗
     ui = cli.Ui()
     clock = clock or SystemClock()
     with tick_logging(log_directory, mask=ui.mask, console=console) as log:
@@ -652,6 +677,7 @@ def run_tick(
         except Timeout:
             log.info("skipped：排程或另一個指令正在執行（執行鎖拿不到）")
             return int(ExitCode.OK)
+        watchdog = _start_watchdog(watchdog_seconds(settings), log)
         try:
             tick = Tick(settings, data, clock, log, publisher=publisher, export_step=export_step)
             report = tick.run()
@@ -662,6 +688,7 @@ def run_tick(
             log.exception("沒預料到的錯誤")
             return int(ExitCode.PARTIAL)
         finally:
+            watchdog.cancel()
             lock.release()
         log.info("結束，結束碼 %d", int(report.exit_code))
         return int(report.exit_code)

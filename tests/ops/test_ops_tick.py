@@ -490,3 +490,28 @@ def test_tick_refuses_a_missing_or_empty_data_folder(tmp_path, monkeypatch):
     )
     assert code == int(ExitCode.CONFIG)
     assert not data.exists() and published == []
+
+
+def test_a_hung_tick_is_ended_by_the_watchdog(tmp_path, steps, monkeypatch):
+    """修完再審 F1-5：卡在讀標頭、SQLite 鎖這類地方時，tick 一直拿著執行鎖，之後的整點都跑不了。
+    超過整輪時間上限加餘裕時，看門狗強制結束程序（放掉執行鎖）。"""
+    import time
+
+    exits: list[int] = []
+    monkeypatch.setattr(tick, "watchdog_seconds", lambda settings: 0.2)
+    monkeypatch.setattr(tick, "_exit_process", exits.append)
+    steps.effects["sources"] = lambda: time.sleep(0.6)  # 卡住
+    steps.run(tmp_path)
+    assert exits == [1]
+    assert "看門狗" in _log_text(tmp_path)
+
+
+def test_the_watchdog_is_cancelled_after_a_normal_tick(tmp_path, steps, monkeypatch):
+    import time
+
+    exits: list[int] = []
+    monkeypatch.setattr(tick, "watchdog_seconds", lambda settings: 0.3)
+    monkeypatch.setattr(tick, "_exit_process", exits.append)
+    assert steps.run(tmp_path) == 0
+    time.sleep(0.5)
+    assert exits == []
