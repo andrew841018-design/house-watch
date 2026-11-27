@@ -34,7 +34,8 @@ node --test web/test/*.test.mjs
 - `HOUSE_WATCH_LOG_DIR`：排程的 log（預設是 platformdirs 的 log 資料夾，Mac 是 `~/Library/Logs/house_watch`）。
 - `HOUSE_WATCH_RUNTIME_DIR`：排程用的固定版本（預設 Mac 是 `~/Library/Application Support/house_watch_runtime`）。
 - `HOUSE_WATCH_LEDGER`：只給測試用。抓取帳本（每站每日請求數、每主機最後請求時間、暫停）是這台電腦
-  所有資料夾共用的一份（`/tmp/house_watch-<uid>/`），設了這個變數就不能連網；連網的試跑一定要共用同一份帳本。
+  所有資料夾共用的一份（`/tmp/house_watch-<uid>/`），設了這個變數，抓取層就不能連網（門牌下載不經過抓取層，
+  不受這條限制）；連網的試跑一定要共用同一份帳本。
 
 匯出 JSON 的 schema 在 `schemas/export.schema.json`，由 `src/house_watch/models.py` 產生：
 
@@ -63,7 +64,7 @@ uv run pytest                                  # 1. 先確認測試通過
 git tag v0.1.0                                 # 2. 要安裝的版本打 tag
 uv run house-watch deploy-local v0.1.0         # 3. 從 tag 建 wheel，裝進執行區
 RT=~/Library/Application\ Support/house_watch_runtime/bin/house-watch
-"$RT" init                                     # 4. 建資料夾（排程不會自動建）
+"$RT" init                                     # 4. 建資料夾（排程不會自動建）；先照下面「本機設定」建好 settings.toml
 "$RT" doctor                                   # 5. 用固定版本檢查
 "$RT" publish --dry-run                        # 6. 看會發布什麼（不寫入、不推送）
 "$RT" schedule install                         # 7. 寫 ~/Library/LaunchAgents/com.house-watch.tick.plist
