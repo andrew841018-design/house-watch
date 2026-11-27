@@ -13,6 +13,7 @@
 """
 
 import datetime as dt
+import logging
 import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -136,6 +137,9 @@ def run(
             # 設定類的錯誤照樣往外丟。
             if isinstance(exc, HouseWatchError):
                 raise
+            logging.getLogger("house_watch.tick").warning(
+                "%s 詳細頁：轉接器沒預料到的例外 %s，這一筆算無效", adapter.source, type(exc).__name__
+            )
             _save(resp, failed_dir, now())
             facts = None
         report.fetched += 1

@@ -36,6 +36,7 @@ from house_watch.models import DateRange, Elevator, ListingFacts, Parking
 PRICE_RANGE = (1_000_000, 1_000_000_000)  # 元：住宅開價 100 萬到 10 億以外的值當成錯誤
 PRICE_MIN_STEP_YUAN = 10_000  # 變動小於 1 萬不算（R3-22）
 PRICE_JUMP_RATIO = 3  # 和上一個記錄的價格差 3 倍以上，當成單位或解析錯誤
+PRICE_CONFIRM_GAP = dt.timedelta(hours=1)  # 被擋下的價格要隔這麼久再看到一次才確認（F1-16）
 
 # 成對的欄位：任一個在詳細欄位裡，就整組一起從上一版帶過來。
 PAIRED_FIELDS: tuple[tuple[str, ...], ...] = (
@@ -231,11 +232,12 @@ def sane_price(yuan: int | None, previous: int | None) -> int | None:
     return yuan
 
 
-def _repeated_jump(prior: "Version | None", raw: int | None) -> bool:
+def _repeated_jump(prior: "Version | None", raw: int | None, now: dt.datetime) -> bool:
     """這個價格上一版就看過、當時被 sane_price 擋下（事後審查 CX-1）。
 
     第一次記到的價格要是錯的（例如少打一位數），之後正確的價格和它差 3 倍以上，會一直被擋。
-    同樣的值連續看到兩次就當成真的新價格；範圍外的值照樣不收。
+    同樣的值隔一段時間（PRICE_CONFIRM_GAP，修完再審 F1-16：同一輪的列表卡和詳細頁不算兩次）
+    再看到一次，就當成真的新價格；範圍外的值照樣不收。
     """
     return (
         prior is not None
@@ -243,6 +245,7 @@ def _repeated_jump(prior: "Version | None", raw: int | None) -> bool:
         and raw is not None
         and prior.facts.price_yuan == raw
         and PRICE_RANGE[0] <= raw <= PRICE_RANGE[1]
+        and now - prior.valid_from >= PRICE_CONFIRM_GAP
     )
 
 
@@ -273,7 +276,7 @@ def append(
     prior = latest(conn, facts.source, facts.source_id)
     digest = facts.facts_hash()
     if prior is not None and prior.facts_hash == digest:
-        if _repeated_jump(prior, facts.price_yuan):  # 同樣的事實又看到一次：確認被擋下的價格
+        if _repeated_jump(prior, facts.price_yuan, now):  # 同樣的事實又看到一次：確認被擋下的價格
             conn.execute(
                 "UPDATE listing_versions SET price_yuan = ?"
                 " WHERE source = ? AND source_id = ? AND valid_to IS NULL",
@@ -284,7 +287,7 @@ def append(
     if prior is not None and start <= prior.valid_from:
         start = prior.valid_from + dt.timedelta(seconds=1)
     price = sane_price(facts.price_yuan, _last_price(conn, facts.source, facts.source_id))
-    if price is None and _repeated_jump(prior, facts.price_yuan):
+    if price is None and _repeated_jump(prior, facts.price_yuan, now):
         price = facts.price_yuan
     if prior is not None:
         conn.execute(

@@ -231,3 +231,15 @@ def test_a_wrong_first_price_is_corrected_once_the_new_price_is_seen_twice(conn)
     assert [p for _, p in versions.price_points(conn, "cthouse", "X1")] == [3_210_000]
     sight(conn, facts(price_yuan=32_100_000), T0 + dt.timedelta(hours=4))  # 再看到同樣的值
     assert [p for _, p in versions.price_points(conn, "cthouse", "X1")][-1] == 32_100_000
+
+
+def test_a_price_jump_is_not_confirmed_within_the_same_run(conn):
+    """修完再審 F1-16：同一輪裡列表卡和詳細頁各寫一次（其他事實不同、價格相同），不能就算
+    「看到兩次」；要和上一版至少相差 PRICE_CONFIRM_GAP 才確認。"""
+    sight(conn, facts(price_yuan=3_210_000), T0)
+    jump = T0 + dt.timedelta(hours=1)
+    sight(conn, facts(price_yuan=32_100_000), jump)  # 跳 10 倍：先擋下
+    sight(conn, facts(price_yuan=32_100_000, parking=Parking.RAMP_FLAT), jump + dt.timedelta(minutes=1))
+    assert [p for _, p in versions.price_points(conn, "cthouse", "X1")] == [3_210_000]
+    sight(conn, facts(price_yuan=32_100_000, parking=Parking.RAMP_FLAT), jump + dt.timedelta(hours=3))
+    assert versions.price_points(conn, "cthouse", "X1")[-1][1] == 32_100_000

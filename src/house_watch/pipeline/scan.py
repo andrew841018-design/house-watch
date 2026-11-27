@@ -41,6 +41,7 @@ ctx 是 cli.StepContext（settings、conn、data、clock、deadline、areas、so
 
 import datetime as dt
 import hashlib
+import logging
 import sqlite3
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
@@ -384,6 +385,10 @@ def run_scan(
         # 其他來源與分群照做（事後審查 P-2）。設定類的錯誤（ConfigError 等）照樣往外丟。
         if isinstance(exc, HouseWatchError):
             raise
+        # 只記例外的類別，不記內容（F1-17）：轉接器壞掉和組出白名單外的網址，看 log 才分得出來。
+        logging.getLogger("house_watch.tick").warning(
+            "%s/%s：轉接器沒預料到的例外 %s，這個來源本輪停止", source, q.area, type(exc).__name__
+        )
         result.error_code, result.stop = ErrorCode.PAGE_INVALID, "source"
     result.parsed = len(seen)
     if complete and mode == "full":
