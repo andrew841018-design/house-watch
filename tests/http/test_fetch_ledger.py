@@ -167,3 +167,84 @@ def test_a_request_in_flight_holds_the_other_folder(two_folders, clock, tmp_path
     worker.join(timeout=10)
     assert not errors and second_rec.times, "另一個資料夾的請求最後要送得出去"
     assert second_rec.times[0] - first_times[0] >= MIN_HOST_INTERVAL_S
+
+
+def _folder(tmp_path, name, clock, handler, **policy):
+    conn = db.init_db(tmp_path / f"{name}.sqlite")
+    fetcher = Fetcher(
+        conn,
+        http=load_public().http,
+        policies={SOURCE: SourcePolicy(frozenset({HOST}), **policy)},
+        clock=clock,
+        transport=httpx.MockTransport(handler),
+        sleep=clock.advance,
+    )
+    return conn, fetcher
+
+
+def test_a_wiped_ledger_is_rebuilt_from_the_folder_counts(tmp_path, clock):
+    """修完再審 F1-2：重開機清掉 /tmp 的帳本後，每個資料夾自己的 DB 紀錄要補回帳本，
+    兩個資料夾（正式與它的副本）合計仍然不能超過每日上限。"""
+    conn_a, a = _folder(tmp_path, "a", clock, Recorder(clock), daily_cap=4)
+    a.fetch(get(), source=SOURCE, deadline=FAR)
+    a.fetch(get(), source=SOURCE, deadline=FAR)
+    ledger_path().unlink()  # 重開機
+    conn_b = db.init_db(tmp_path / "b.sqlite")
+    conn_a.backup(conn_b)  # 正式 DB 的副本
+    b = Fetcher(
+        conn_b,
+        http=load_public().http,
+        policies={SOURCE: SourcePolicy(frozenset({HOST}), daily_cap=4)},
+        clock=clock,
+        transport=httpx.MockTransport(Recorder(clock)),
+        sleep=clock.advance,
+    )
+    sent = 0
+    for fetcher in (b, a, b, a):
+        try:
+            fetcher.fetch(get(), source=SOURCE, deadline=FAR)
+            sent += 1
+        except BudgetExhausted:
+            pass
+    assert sent == 2, "重開機前已經送了 2 個，上限 4：之後兩邊合計只能再送 2 個"
+    for fetcher, conn in ((a, conn_a), (b, conn_b)):
+        fetcher.close()
+        conn.close()
+
+
+def test_a_pause_kept_in_a_folder_db_goes_back_to_the_ledger(tmp_path, clock):
+    """修完再審 F1-2：帳本被清掉後，DB 裡還在的暫停要補回帳本，別的資料夾才不會去打擋我們的網站。"""
+    from house_watch.http import StateStore
+
+    conn_a, a = _folder(tmp_path, "a", clock, Recorder(clock))
+    StateStore(conn_a).update_state(SOURCE, paused_until=clock.now() + dt.timedelta(hours=5))
+    with pytest.raises(Blocked):
+        a.fetch(get(), source=SOURCE, deadline=FAR)
+    handler = Recorder(clock)
+    conn_b, b = _folder(tmp_path, "b", clock, handler)
+    with pytest.raises(Blocked):
+        b.fetch(get(), source=SOURCE, deadline=FAR)
+    assert handler.times == []
+    for fetcher, conn in ((a, conn_a), (b, conn_b)):
+        fetcher.close()
+        conn.close()
+
+
+def test_a_non_default_ledger_cannot_use_the_real_network(tmp_path):
+    """修完再審 F1-3：照 §3.7 把帳本也換成副本的連網 dry-run，又會變成獨立的爬蟲。
+    帳本不在預設位置（設了 HOUSE_WATCH_LEDGER）時，只能用注入的 transport（測試），不能連網。"""
+    from house_watch.errors import ConfigError
+
+    conn = db.init_db(tmp_path / "x.sqlite")
+    try:
+        with pytest.raises(ConfigError, match="帳本"):
+            Fetcher(conn, http=load_public().http, policies={})
+    finally:
+        conn.close()
+
+
+def test_a_ledger_time_far_in_the_future_is_capped(two_folders, clock):
+    """修完再審 F1-11：帳本裡的時間被寫成未來（時鐘回撥、測試腳本沒隔離帳本）時，
+    等待最多一個間隔，不能讓那個主機的每個請求都逾時。"""
+    FetchLedger().mark_host(HOST, clock.now().timestamp() + 7200)
+    two_folders(0, Recorder(clock)).fetch(get(), source=SOURCE, deadline=clock.monotonic() + 60)

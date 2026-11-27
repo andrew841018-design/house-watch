@@ -33,6 +33,8 @@ node --test web/test/*.test.mjs
 - `HOUSE_WATCH_CONFIG`：本機設定檔 `settings.toml` 的完整路徑。
 - `HOUSE_WATCH_LOG_DIR`：排程的 log（預設是 platformdirs 的 log 資料夾，Mac 是 `~/Library/Logs/house_watch`）。
 - `HOUSE_WATCH_RUNTIME_DIR`：排程用的固定版本（預設 Mac 是 `~/Library/Application Support/house_watch_runtime`）。
+- `HOUSE_WATCH_LEDGER`：只給測試用。抓取帳本（每站每日請求數、每主機最後請求時間、暫停）是這台電腦
+  所有資料夾共用的一份（`/tmp/house_watch-<uid>/`），設了這個變數就不能連網；連網的試跑一定要共用同一份帳本。
 
 匯出 JSON 的 schema 在 `schemas/export.schema.json`，由 `src/house_watch/models.py` 產生：
 

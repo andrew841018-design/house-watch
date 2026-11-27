@@ -124,10 +124,12 @@ class FetchLedger:
         with self._open(write=False) as data:
             return _count_for(_section(data, "requests").get(source), day)
 
-    def add_request(self, source: str, day: dt.date) -> int:
+    def add_request(self, source: str, day: dt.date, at_least: int = 0) -> int:
+        """記一個請求。at_least：呼叫端資料夾自己的計數（含這一個）；帳本被清掉（重開機）後，
+        靠各資料夾的紀錄補回來，不從 0 重算（修完再審 F1-2）。"""
         with self._open(write=True) as data:
             requests = _section(data, "requests")
-            count = _count_for(requests.get(source), day) + 1
+            count = max(_count_for(requests.get(source), day) + 1, at_least)
             requests[source] = {"date": day.isoformat(), "n": count}
             return count
 

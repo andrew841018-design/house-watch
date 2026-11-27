@@ -29,6 +29,8 @@ cookie 只放在記憶體、執行結束就丟，不寫進任何檔案。
 import datetime as dt
 import hashlib
 import json
+import logging
+import os
 import ssl
 import time
 from collections.abc import Callable, Iterable, Iterator, Mapping
@@ -45,8 +47,8 @@ from filelock import Timeout
 from house_watch import __version__
 from house_watch.clock import Clock, SystemClock, from_iso, taipei_date, to_iso
 from house_watch.db import transaction
-from house_watch.errors import ErrorCode, HouseWatchError
-from house_watch.ledger import FetchLedger
+from house_watch.errors import ConfigError, ErrorCode, HouseWatchError
+from house_watch.ledger import ENV_LEDGER, FetchLedger
 from house_watch.settings import HttpConfig, Settings, SourceConfig, TlsConfig
 from house_watch.sources import robots
 from house_watch.sources.base import FETCHED_AT_HEADER, Adapter, Blocked, Fetch, RequestSpec, Resp
@@ -343,6 +345,9 @@ class Fetcher:
     ) -> None:
         self.store = StateStore(conn, ledger)
         self.ledger = self.store.ledger
+        if transport is None and os.environ.get(ENV_LEDGER):
+            # 修完再審 F1-3：帳本換成副本的連網試跑，會變成獨立的爬蟲（每日上限、間隔、暫停都分開）。
+            raise ConfigError("抓取帳本不在預設位置（HOUSE_WATCH_LEDGER）時不能連網；連網一定要共用同一份帳本")
         self._http = http
         self._policies = dict(policies)
         self._relax = frozenset(h.lower() for h in (tls.relax_strict_hosts if tls else ()))
@@ -413,6 +418,10 @@ class Fetcher:
         now = self._clock.now()
         until = self.store.state(source).paused_until
         shared = self.ledger.paused_until(source)
+        if shared is not None and shared > now + RETRY_AFTER_MAX:
+            shared = None  # 不合理的未來時間（時鐘回撥、壞資料）不採用（F1-11）
+        if until is not None and until > now and (shared is None or until > shared):
+            self._ledger_write(self.ledger.set_paused, source, until)  # 帳本被清掉後補回（F1-2）
         if shared is not None and (until is None or shared > until):
             until = shared
         if until is not None and until > now:
@@ -522,7 +531,8 @@ class Fetcher:
             self._on_soft_failure(source, ErrorCode.TIMEOUT, "連線錯誤")
         finally:
             self._last_done[host] = self._clock.monotonic()
-            self.ledger.mark_host(host, self._clock.now().timestamp())
+            # 帳本寫不進去不能蓋掉原本的例外（F1-12）；這次請求有每主機鎖保護。
+            self._ledger_write(self.ledger.mark_host, host, self._clock.now().timestamp())
         self._on_success(source)
         resp_headers[FETCHED_AT_HEADER] = to_iso(self._clock.now())
         return Resp(status=status, headers=resp_headers, body=content, url=final_url)
@@ -574,8 +584,8 @@ class Fetcher:
         last = self._last_done.get(host)
         wait = 0.0 if last is None else max(0.0, last + interval - now)
         shared = self.ledger.host_last(host)  # 別的程序（別的資料夾）最後一次打這個主機
-        if shared is not None:
-            wait = max(wait, shared + interval - self._clock.now().timestamp())
+        if shared is not None:  # 最多等一個間隔：帳本的時間在未來時不採用（F1-11）
+            wait = max(wait, min(shared + interval - self._clock.now().timestamp(), interval))
         if now + wait >= deadline:
             raise DeadlineReached(ErrorCode.TIMEOUT, "本次執行的截止時間到了")
         if wait > 0:
@@ -595,8 +605,15 @@ class Fetcher:
         count = self.store.db_requests_on(source, today) + 1
         payload = json.dumps({"date": today.isoformat(), "n": count}, separators=(",", ":"))
         self.store.kv_set(_COUNT_KEY.format(source=source), payload)
-        self.ledger.add_request(source, today)
+        self.ledger.add_request(source, today, at_least=count)
         self.requests_sent[source] = self.requests_sent.get(source, 0) + 1
+
+    def _ledger_write(self, write: Callable[..., Any], *args: Any) -> None:
+        """寫帳本；失敗只記 log、不中斷（修完再審 F1-12）。讀帳本失敗才擋下不送。"""
+        try:
+            write(*args)
+        except (ConfigError, OSError) as exc:
+            logging.getLogger("house_watch.tick").warning("抓取帳本寫不進去：%s", type(exc).__name__)
 
     def _pause(self, source: str, code: ErrorCode, minimum: dt.timedelta) -> dt.timedelta:
         """長時間退避：倍數加一，暫停到 now + max(倍增的時間, minimum)。"""
@@ -604,8 +621,9 @@ class Fetcher:
         level = self.store.state(source).backoff_level + 1
         pause = max(_backoff(level), minimum)
         until = now + pause
-        self.ledger.set_paused(source, until)  # 別的資料夾也要停
+        # 先寫 DB，再寫帳本；帳本寫不進去也不能讓 DB 的暫停不見（F1-12）。
         self.store.update_state(source, paused_until=until, backoff_level=level, last_error=code.value)
+        self._ledger_write(self.ledger.set_paused, source, until)  # 別的資料夾也要停
         self.store.kv_set(_RESET_KEY.format(source=source), to_iso(until + BACKOFF_QUIET_RESET))
         self.store.kv_delete(_SOFT_KEY.format(source=source))
         return pause
