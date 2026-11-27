@@ -41,7 +41,7 @@ def test_hits_are_listed_by_position_never_by_value(tmp_path, capsys):
     code = module.main([str(values), "HEAD"], repo=repo)
     out = capsys.readouterr()
     assert code == 1
-    assert "a.txt:2" in out.out and out.out.count("commit ") == 1
+    assert "a.txt:2" in out.out and "：message" in out.out and "：a.txt" in out.out  # HEAD、message、新增的行
     assert "9876" not in out.out + out.err
 
 
@@ -55,3 +55,23 @@ def test_clean_repo_exits_zero(tmp_path, capsys):
     values = tmp_path / "sensitive.txt"
     values.write_text("9876萬\n", encoding="utf-8")
     assert _load().main([str(values), "HEAD"], repo=repo) == 0
+
+
+def test_a_value_added_then_removed_in_the_range_is_still_caught(tmp_path, capsys):
+    """修完再審 F1-10：commit A 加了值、commit B 刪掉；工作區乾淨，但 A 會跟著推上去。
+    要掃範圍內每個 commit 新增的行，不是工作區。"""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git("init", "-q", cwd=repo)
+    (repo / "a.txt").write_text("開始\n", encoding="utf-8")
+    _git("add", ".", cwd=repo)
+    _git("commit", "-qm", "base", cwd=repo)
+    (repo / "a.txt").write_text("開始\n示意 9876萬\n", encoding="utf-8")
+    _git("commit", "-qam", "add", cwd=repo)
+    (repo / "a.txt").write_text("開始\n", encoding="utf-8")
+    _git("commit", "-qam", "remove", cwd=repo)
+    values = tmp_path / "sensitive.txt"
+    values.write_text("9876萬\n", encoding="utf-8")
+    code = _load().main([str(values), "HEAD~2..HEAD"], repo=repo)
+    out = capsys.readouterr()
+    assert code == 1 and "a.txt" in out.out and "9876" not in out.out + out.err
