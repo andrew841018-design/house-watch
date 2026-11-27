@@ -285,7 +285,7 @@ function locationResults(kind, rec, profile) {
   const margin = precision === "community" ? RULE_CONSTANTS.COMMUNITY_BOUNDARY_M : RULE_CONSTANTS.NEAR_BOUNDARY_M;
   if (useNear) results.push(nearCheck([metrics.d_zhonglu_m, metrics.d_yiwen_m], profile.near_m, margin));
   if (useRca) results.push(rcaCheck(metrics.d_rca_m, profile.rca_m, margin));
-  if (useDrive) results.push(driveCheck(metrics, profile.drive_min));
+  if (useDrive) results.push(driveCheck(metrics, profile.drive_min, precision));
   return results;
 }
 
@@ -316,11 +316,13 @@ function rcaCheck(value, limit, margin = RULE_CONSTANTS.NEAR_BOUNDARY_M) {
 // 中壢車程（門牌、網站座標或社區精度）。
 // C2：drive_min 是「包含這點的最小車程檔，沒有就是 null」。所以在區內、drive_min 是 null
 // 就是在每一檔之外 → 不符；drive_min 缺欄位、空字串、NaN 才是缺值。
-function driveCheck(metrics, limit) {
+function driveCheck(metrics, limit, precision = null) {
   if (metrics.in_district !== true) return pending("district_missing");
   if (metrics.drive_min === null) return failure("drive_out");
   const band = posInt(metrics.drive_min);
   if (band === null) return pending("drive_missing");
+  // 社區精度只到社區：剛好落在所選那一檔時，那一戶可能在下一檔（修完再審 F1-9）。
+  if (precision === "community" && band === limit) return pending("drive_near");
   if (band <= limit) return PASS;
   if (band <= limit + RULE_CONSTANTS.DRIVE_NEAR_BAND_MIN) return pending("drive_near");
   return failure("drive_out");
